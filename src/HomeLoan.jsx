@@ -131,52 +131,88 @@ export default function HomeLoanAnalyzer() {
     return { schedule, totals, emi: Number(emi.toFixed(2)) };
   }
 
-  // Build three scenarios: base, with prepayment, with savings link
-  const baseScenario = useMemo(() => { 
-    return buildSchedule({ 
-      principal: loanAmount, 
-      months: totalMonths, 
-      annualRate, 
-      emiStartISO: emiStartDate 
-    }), [loanAmount, totalMonths, annualRate, emiStartDate] });
-
-  const prepayScenario = useMemo(() => { 
-    return buildSchedule({ 
+  const baseScenario = useMemo(() => {
+    return buildSchedule({
       principal: loanAmount,
-      months: totalMonths, 
-      annualRate, 
-      emiStartISO: emiStartDate, 
-      oneTimePrepay: oneTimePrepayAmt || whatIfOneTime, 
-      oneTimePrepayDateISO: oneTimePrepayDate || null, 
-      recurringPrepay: recurringPrepayAmt, 
-      recurringFreq: recurringPrepayFreq 
-    }), [loanAmount, totalMonths, annualRate, emiStartDate, oneTimePrepayAmt, oneTimePrepayDate, recurringPrepayAmt, recurringPrepayFreq, whatIfOneTime] });
+      months: totalMonths,
+      annualRate,
+      emiStartISO: emiStartDate,
+    });
+  }, [loanAmount, totalMonths, annualRate, emiStartDate]);
 
-  const savingsScenario = useMemo(() => { 
-    return buildSchedule({ 
-      principal: loanAmount, 
-      months: totalMonths, 
-      annualRate, 
-      emiStartISO: emiStartDate, 
-      savingsLink: linkSavings, 
-      savingsInit: whatIfSavings || savingsBalance, 
-      savingsMonthlyDrift: savingsGrowthMonthly 
-    }), [loanAmount, totalMonths, annualRate, emiStartDate, linkSavings, savingsBalance, whatIfSavings, savingsGrowthMonthly]});
+  const prepayScenario = useMemo(() => {
+    return buildSchedule({
+      principal: loanAmount,
+      months: totalMonths,
+      annualRate,
+      emiStartISO: emiStartDate,
+      oneTimePrepay: oneTimePrepayAmt || whatIfOneTime,
+      oneTimePrepayDateISO: oneTimePrepayDate || null,
+      recurringPrepay: recurringPrepayAmt,
+      recurringFreq: recurringPrepayFreq,
+    });
+  }, [
+    loanAmount,
+    totalMonths,
+    annualRate,
+    emiStartDate,
+    oneTimePrepayAmt,
+    oneTimePrepayDate,
+    recurringPrepayAmt,
+    recurringPrepayFreq,
+    whatIfOneTime,
+  ]);
 
-  const prepaySavingsScenario = useMemo(() => { 
-    return buildSchedule({ 
-      principal: loanAmount, 
-      months: totalMonths, 
-      annualRate, 
-      emiStartISO: emiStartDate, 
-      oneTimePrepay: oneTimePrepayAmt || whatIfOneTime, 
-      oneTimePrepayDateISO: oneTimePrepayDate || null, 
-      recurringPrepay: recurringPrepayAmt, 
-      recurringFreq: recurringPrepayFreq, 
+  const savingsScenario = useMemo(() => {
+    return buildSchedule({
+      principal: loanAmount,
+      months: totalMonths,
+      annualRate,
+      emiStartISO: emiStartDate,
       savingsLink: linkSavings,
-      savingsInit: whatIfSavings || savingsBalance, 
-      savingsMonthlyDrift: savingsGrowthMonthly 
-    }), [loanAmount, totalMonths, annualRate, emiStartDate, oneTimePrepayAmt, whatIfOneTime, oneTimePrepayDate, recurringPrepayAmt, recurringPrepayFreq, linkSavings, savingsBalance, whatIfSavings, savingsGrowthMonthly]});
+      savingsInit: whatIfSavings || savingsBalance,
+      savingsMonthlyDrift: savingsGrowthMonthly,
+    });
+  }, [
+    loanAmount,
+    totalMonths,
+    annualRate,
+    emiStartDate,
+    linkSavings,
+    savingsBalance,
+    whatIfSavings,
+    savingsGrowthMonthly,
+  ]);
+
+  const prepaySavingsScenario = useMemo(() => {
+    return buildSchedule({
+      principal: loanAmount,
+      months: totalMonths,
+      annualRate,
+      emiStartISO: emiStartDate,
+      oneTimePrepay: oneTimePrepayAmt || whatIfOneTime,
+      oneTimePrepayDateISO: oneTimePrepayDate || null,
+      recurringPrepay: recurringPrepayAmt,
+      recurringFreq: recurringPrepayFreq,
+      savingsLink: linkSavings,
+      savingsInit: whatIfSavings || savingsBalance,
+      savingsMonthlyDrift: savingsGrowthMonthly,
+    });
+  }, [
+    loanAmount,
+    totalMonths,
+    annualRate,
+    emiStartDate,
+    oneTimePrepayAmt,
+    whatIfOneTime,
+    oneTimePrepayDate,
+    recurringPrepayAmt,
+    recurringPrepayFreq,
+    linkSavings,
+    savingsBalance,
+    whatIfSavings,
+    savingsGrowthMonthly,
+  ]);
 
   const chartData = useMemo(() => {
     const maxLen = Math.max(baseScenario.schedule.length, prepayScenario.schedule.length, savingsScenario.schedule.length, prepaySavingsScenario.schedule.length);
