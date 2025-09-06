@@ -355,7 +355,7 @@ export default function HomeLoanAnalyzer() {
 
           <label>Recurring prepayment (₹)</label>
           <div style={{ display: "flex", gap: 8 }}>
-            <input type="number" style={{ flex: 1 }} value={recurringPrepayAmt} onChange={(e) => setRecurringPrepayAmt(Number(e.target.value))} />
+            <input type="number" value={recurringPrepayAmt} onChange={(e) => setRecurringPrepayAmt(Number(e.target.value))} />
             <select value={recurringPrepayFreq} onChange={(e) => setRecurringPrepayFreq(e.target.value)}>
               <option value="monthly">Monthly</option>
               <option value="quarterly">Quarterly</option>
