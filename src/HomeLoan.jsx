@@ -250,30 +250,44 @@ export default function HomeLoanAnalyzer() {
     const baseMonths = baseScenario.schedule.length;
 
     const scenarios = [
-      { name: "Base", interest: baseInterest, months: baseMonths },
       { name: "Prepay", interest: prepayScenario.totals.totalInterest, months: prepayScenario.schedule.length },
       { name: "Savings Linked", interest: savingsScenario.totals.totalInterest, months: savingsScenario.schedule.length },
       { name: "Prepay + Savings", interest: prepaySavingsScenario.totals.totalInterest, months: prepaySavingsScenario.schedule.length },
     ];
 
-    // Compute savings vs base
-    return scenarios.map((s) => {
+    const tableData = scenarios.map((s) => {
       const interestSaved = baseInterest - s.interest;
       const monthsSaved = baseMonths - s.months;
       const percentSaved = ((interestSaved / baseInterest) * 100).toFixed(1);
 
       return {
-        ...s,
+        name: s.name,
         interestSaved,
         monthsSaved,
         percentSaved,
       };
     });
+
+    // Generate text insights
+    const insights = tableData.map((r) => {
+      if (r.interestSaved <= 0) return null;
+      let text = `${r.name}: Save ₹${formatINR(r.interestSaved)} (${r.percentSaved}% of interest)`;
+      if (r.monthsSaved > 0) text += `, reduce tenure by ${r.monthsSaved} month${r.monthsSaved > 1 ? "s" : ""}.`;
+      return text;
+    }).filter(Boolean);
+
+    // Identify best scenario (max interest saved)
+    const best = tableData.reduce((prev, curr) => (curr.interestSaved > (prev.interestSaved || 0) ? curr : prev), {});
+    if (best.name) insights.push(`🏆 Best option: ${best.name} for maximum savings!`);
+
+    return { tableData, insights };
   }
+
 
 
   const recommendations = useMemo(generateRecommendations, [baseScenario, prepayScenario, savingsScenario, prepaySavingsScenario, linkSavings, savingsBalance, whatIfSavings, oneTimePrepayAmt, whatIfOneTime, recurringPrepayAmt]);
 
+  const { tableData, insights } = recommendations;
   // Export CSV helper
   function exportCSV(schedule, filename = "amortization.csv") {
     const header = ["Month", "Date", "Payment", "PrincipalPaid", "InterestPaid", "Balance", "SavingsLinked"];
@@ -552,6 +566,8 @@ export default function HomeLoanAnalyzer() {
       </div>
       <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
         <h3 className="small">Auto Recommendations</h3>
+
+        {/* Table */}
         <table>
           <thead>
             <tr>
@@ -562,16 +578,23 @@ export default function HomeLoanAnalyzer() {
             </tr>
           </thead>
           <tbody>
-            {recommendations.map((r, i) => (
+            {tableData.map((r, i) => (
               <tr key={i} style={{ fontWeight: r.interestSaved > 0 ? "600" : "normal" }}>
                 <td>{r.name}</td>
                 <td>{r.interestSaved > 0 ? `₹${formatINR(r.interestSaved)}` : "-"}</td>
                 <td>{r.interestSaved > 0 ? `${r.percentSaved}%` : "-"}</td>
-                <td>{r.monthsSaved > 0 ? `${r.monthsSaved} months` : "-"}</td>
+                <td>{r.monthsSaved > 0 ? `${r.monthsSaved} month${r.monthsSaved > 1 ? "s" : ""}` : "-"}</td>
               </tr>
             ))}
           </tbody>
         </table>
+
+        {/* Text Insights */}
+        <ul className="recs" style={{ marginTop: 12 }}>
+          {insights.map((ins, i) => (
+            <li key={i}>{ins}</li>
+          ))}
+        </ul>
       </div>
       </div>
 
