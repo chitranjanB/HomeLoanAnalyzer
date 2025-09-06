@@ -10,6 +10,15 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+// helper for lakh/crore format with 2 decimals
+function formatINR(num) {
+  if (num == null || isNaN(num)) return "0.00";
+  return num.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export default function HomeLoanAnalyzer() {
   const [loanAmount, setLoanAmount] = useState(7500000);
   const [tenureYears, setTenureYears] = useState(25);
@@ -238,30 +247,30 @@ export default function HomeLoanAnalyzer() {
 
   function generateRecommendations() {
     const baseInterest = baseScenario.totals.totalInterest;
-    const prepayInterest = prepayScenario.totals.totalInterest;
-    const savingsInterest = savingsScenario.totals.totalInterest;
-    const prepaySavingsInterest = prepaySavingsScenario.totals.totalInterest;
+    const baseMonths = baseScenario.schedule.length;
 
-    const recs = [];
-    if (linkSavings) {
-      const saved = Math.max(0, baseInterest - savingsInterest);
-      const monthsSaved = baseScenario.schedule.length - savingsScenario.schedule.length;
-      recs.push(`Linking savings saves approx ₹${saved.toFixed(0)} and may shorten tenure by ${monthsSaved} months.`);
-    }
-    if ((oneTimePrepayAmt || whatIfOneTime) > 0) {
-      const saved = baseInterest - prepayScenario.totals.totalInterest;
-      recs.push(`One-time prepayment saves approx ₹${saved.toFixed(0)}.`);
-    }
-    if (recurringPrepayAmt > 0) {
-      const saved = baseInterest - prepayScenario.totals.totalInterest;
-      recs.push(`Recurring prepayment saves approx ₹${saved.toFixed(0)}.`);
-    }
-    if (linkSavings && (oneTimePrepayAmt || whatIfOneTime || recurringPrepayAmt > 0)) {
-      const saved = baseInterest - prepaySavingsInterest;
-      recs.push(`Combining prepayment and savings saves approx ₹${saved.toFixed(0)}.`);
-    }
-    return recs;
+    const scenarios = [
+      { name: "Base", interest: baseInterest, months: baseMonths },
+      { name: "Prepay", interest: prepayScenario.totals.totalInterest, months: prepayScenario.schedule.length },
+      { name: "Savings Linked", interest: savingsScenario.totals.totalInterest, months: savingsScenario.schedule.length },
+      { name: "Prepay + Savings", interest: prepaySavingsScenario.totals.totalInterest, months: prepaySavingsScenario.schedule.length },
+    ];
+
+    // Compute savings vs base
+    return scenarios.map((s) => {
+      const interestSaved = baseInterest - s.interest;
+      const monthsSaved = baseMonths - s.months;
+      const percentSaved = ((interestSaved / baseInterest) * 100).toFixed(1);
+
+      return {
+        ...s,
+        interestSaved,
+        monthsSaved,
+        percentSaved,
+      };
+    });
   }
+
 
   const recommendations = useMemo(generateRecommendations, [baseScenario, prepayScenario, savingsScenario, prepaySavingsScenario, linkSavings, savingsBalance, whatIfSavings, oneTimePrepayAmt, whatIfOneTime, recurringPrepayAmt]);
 
@@ -388,10 +397,10 @@ export default function HomeLoanAnalyzer() {
           <hr style={{ margin: "14px 0" }} />
 
           <h3 className="small">What-if quick sliders</h3>
-          <label className="small">Test savings to link: ₹{whatIfSavings.toLocaleString()}</label>
+          <label className="small">Test savings to link: ₹{formatINR(whatIfSavings)}</label>
           <input type="number" value={whatIfSavings} onChange={(e) => setWhatIfSavings(Number(e.target.value))} />
 
-          <label className="small">Test one-time prepayment: ₹{whatIfOneTime.toLocaleString()}</label>
+          <label className="small">Test one-time prepayment: ₹{formatINR(whatIfOneTime)}</label>
           <input type="number" value={whatIfOneTime} onChange={(e) => setWhatIfOneTime(Number(e.target.value))} />
         </div>
 
@@ -401,11 +410,11 @@ export default function HomeLoanAnalyzer() {
           <div className="summary-grid">
             <div className="summary-card">
               <div className="small">EMI (Base)</div>
-              <div className="big-num">₹{baseScenario.emi.toLocaleString()}</div>
+              <div className="big-num">₹{formatINR(baseScenario.emi)}</div>
             </div>
             <div className="summary-card">
               <div className="small">Total Interest (Base)</div>
-              <div className="big-num">₹{baseScenario.totals.totalInterest.toFixed(0).toLocaleString()}</div>
+              <div className="big-num">₹{formatINR(baseScenario.totals.totalInterest)}</div>
             </div>
             <div className="summary-card">
               <div className="small">Payoff after (months)</div>
@@ -413,7 +422,7 @@ export default function HomeLoanAnalyzer() {
             </div>
             <div className="summary-card">
               <div className="small">Total Cost (Principal + Interest)</div>
-              <div className="big-num">₹{(loanAmount + baseScenario.totals.totalInterest).toFixed(0).toLocaleString()}</div>
+              <div className="big-num">₹{formatINR(loanAmount + baseScenario.totals.totalInterest)}</div>
             </div>
           </div>
 
@@ -464,38 +473,39 @@ export default function HomeLoanAnalyzer() {
           </div>
         </div>
 
-        <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
-          <h3 className="small">Amortization Schedule (Base)</h3>
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Month</th>
-                  <th>Date</th>
-                  <th>Payment</th>
-                  <th>Principal</th>
-                  <th>Interest</th>
-                  <th>Balance</th>
-                  <th>Savings Linked</th>
+      <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
+        <h3 className="small">Amortization Schedule (Base)</h3>
+        <div className="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th>Date</th>
+                <th>Payment</th>
+                <th>Principal</th>
+                <th>Interest</th>
+                <th>Balance</th>
+                <th>Savings Linked</th>
+              </tr>
+            </thead>
+            <tbody>
+              {baseScenario.schedule.slice(0, 500).map((r) => (
+                <tr key={r.month}>
+                  <td>{r.month}</td>
+                  <td>{r.date}</td>
+                  <td>₹{formatINR(r.payment)}</td>
+                  <td>₹{formatINR(r.principalPaid)}</td>
+                  <td>₹{formatINR(r.interestPaid)}</td>
+                  <td>₹{formatINR(r.balance)}</td>
+                  <td>₹{formatINR(r.savingsLinked)}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {baseScenario.schedule.slice(0, 500).map((r) => (
-                  <tr key={r.month}>
-                    <td>{r.month}</td>
-                    <td>{r.date}</td>
-                    <td>₹{r.payment.toLocaleString()}</td>
-                    <td>₹{r.principalPaid.toLocaleString()}</td>
-                    <td>₹{r.interestPaid.toLocaleString()}</td>
-                    <td>₹{r.balance.toLocaleString()}</td>
-                    <td>₹{r.savingsLinked.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
+      </div>
 
+      {/* Scenario Comparison */}
       <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
         <h3 className="small">Scenario Comparison (Quick)</h3>
         <table>
@@ -511,42 +521,57 @@ export default function HomeLoanAnalyzer() {
           <tbody>
             <tr>
               <td>Base</td>
-              <td>₹{baseScenario.emi.toLocaleString()}</td>
+              <td>₹{formatINR(baseScenario.emi)}</td>
               <td>{baseScenario.schedule.length}</td>
-              <td>₹{baseScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
-              <td>₹{(loanAmount + baseScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+              <td>₹{formatINR(baseScenario.totals.totalInterest)}</td>
+              <td>₹{formatINR(loanAmount + baseScenario.totals.totalInterest)}</td>
             </tr>
             <tr>
               <td>Prepay</td>
-              <td>₹{prepayScenario.emi.toLocaleString()}</td>
+              <td>₹{formatINR(prepayScenario.emi)}</td>
               <td>{prepayScenario.schedule.length}</td>
-              <td>₹{prepayScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
-              <td>₹{(loanAmount + prepayScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+              <td>₹{formatINR(prepayScenario.totals.totalInterest)}</td>
+              <td>₹{formatINR(loanAmount + prepayScenario.totals.totalInterest)}</td>
             </tr>
             <tr>
               <td>Savings Linked</td>
-              <td>₹{savingsScenario.emi.toLocaleString()}</td>
+              <td>₹{formatINR(savingsScenario.emi)}</td>
               <td>{savingsScenario.schedule.length}</td>
-              <td>₹{savingsScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
-              <td>₹{(loanAmount + savingsScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+              <td>₹{formatINR(savingsScenario.totals.totalInterest)}</td>
+              <td>₹{formatINR(loanAmount + savingsScenario.totals.totalInterest)}</td>
             </tr>
             <tr>
               <td>Prepay + Savings</td>
-              <td>₹{prepaySavingsScenario.emi.toLocaleString()}</td>
+              <td>₹{formatINR(prepaySavingsScenario.emi)}</td>
               <td>{prepaySavingsScenario.schedule.length}</td>
-              <td>₹{prepaySavingsScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
-              <td>₹{(loanAmount + prepaySavingsScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+              <td>₹{formatINR(prepaySavingsScenario.totals.totalInterest)}</td>
+              <td>₹{formatINR(loanAmount + prepaySavingsScenario.totals.totalInterest)}</td>
             </tr>
           </tbody>
         </table>
       </div>
       <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
         <h3 className="small">Auto Recommendations</h3>
-        <ul className="recs">
-          {recommendations.map((r, i) => (
-            <li key={i}>{r}</li>
-          ))}
-        </ul>
+        <table>
+          <thead>
+            <tr>
+              <th>Scenario</th>
+              <th>Interest Saved</th>
+              <th>% Saved</th>
+              <th>Tenure Reduced</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recommendations.map((r, i) => (
+              <tr key={i} style={{ fontWeight: r.interestSaved > 0 ? "600" : "normal" }}>
+                <td>{r.name}</td>
+                <td>{r.interestSaved > 0 ? `₹${formatINR(r.interestSaved)}` : "-"}</td>
+                <td>{r.interestSaved > 0 ? `${r.percentSaved}%` : "-"}</td>
+                <td>{r.monthsSaved > 0 ? `${r.monthsSaved} months` : "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       </div>
 
