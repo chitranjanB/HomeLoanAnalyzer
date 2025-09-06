@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   LineChart,
   Line,
@@ -10,37 +10,28 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-// Default export React component
 export default function HomeLoanAnalyzer() {
-  // --- Input state ---
-  const [loanAmount, setLoanAmount] = useState(5000000); // ₹
+  const [loanAmount, setLoanAmount] = useState(5000000);
   const [tenureYears, setTenureYears] = useState(20);
   const [tenureMonths, setTenureMonths] = useState(0);
-  const [annualRate, setAnnualRate] = useState(7.4); // %
+  const [annualRate, setAnnualRate] = useState(7.4);
   const [emiStartDate, setEmiStartDate] = useState(() => {
     const d = new Date();
     return d.toISOString().slice(0, 10);
   });
 
-  // Prepayment options
   const [oneTimePrepayAmt, setOneTimePrepayAmt] = useState(0);
   const [oneTimePrepayDate, setOneTimePrepayDate] = useState("");
   const [recurringPrepayAmt, setRecurringPrepayAmt] = useState(0);
   const [recurringPrepayFreq, setRecurringPrepayFreq] = useState("yearly");
 
-  // Savings-link option
   const [linkSavings, setLinkSavings] = useState(true);
-  const [savingsBalance, setSavingsBalance] = useState(200000); // initial
-  const [savingsGrowthMonthly, setSavingsGrowthMonthly] = useState(0); // ₹ change per month
+  const [savingsBalance, setSavingsBalance] = useState(200000);
+  const [savingsGrowthMonthly, setSavingsGrowthMonthly] = useState(0);
 
-  // Scenario selection (up to 3)
-  const [scenarios, setScenarios] = useState(["Base", "Prepay", "Savings"]);
-
-  // What-if slider quick controls
   const [whatIfSavings, setWhatIfSavings] = useState(200000);
   const [whatIfOneTime, setWhatIfOneTime] = useState(0);
 
-  // Helpers
   const totalMonths = useMemo(() => tenureYears * 12 + Number(tenureMonths), [tenureYears, tenureMonths]);
 
   function monthlyEMI(P, rAnnual, nMonths) {
@@ -49,20 +40,8 @@ export default function HomeLoanAnalyzer() {
     return (P * r * Math.pow(1 + r, nMonths)) / (Math.pow(1 + r, nMonths) - 1);
   }
 
-  // Generate amortization schedule considering: prepayments (one-time, recurring), savings offset (simple "offset balance reduces principal for interest calc")
-  function buildSchedule({
-    principal,
-    months,
-    annualRate,
-    emiStartISO,
-    oneTimePrepay = 0,
-    oneTimePrepayDateISO = null,
-    recurringPrepay = 0,
-    recurringFreq = "yearly",
-    savingsLink = false,
-    savingsInit = 0,
-    savingsMonthlyDrift = 0,
-  }) {
+   // Generate amortization schedule considering: prepayments (one-time, recurring), savings offset (simple "offset balance reduces principal for interest calc")
+  function buildSchedule({ principal, months, annualRate, emiStartISO, oneTimePrepay = 0, oneTimePrepayDateISO = null, recurringPrepay = 0, recurringFreq = "yearly", savingsLink = false, savingsInit = 0, savingsMonthlyDrift = 0 }) {
     const schedule = [];
     let outstanding = principal;
     const monthlyRate = annualRate / 12 / 100;
@@ -70,7 +49,6 @@ export default function HomeLoanAnalyzer() {
 
     // Convert start date
     const startDate = new Date(emiStartISO);
-
     const recurringInterval = recurringFreq === "monthly" ? 1 : recurringFreq === "quarterly" ? 3 : 12;
 
     // For savings offset: we'll assume the savings balance reduces the interest-bearing principal each month by being "linked".
@@ -80,7 +58,7 @@ export default function HomeLoanAnalyzer() {
     for (let m = 1; m <= 1000; m++) {
       // break if fully paid
       if (outstanding <= 0.0001) break;
-      if (m > 10000) break; // safety
+      if (m > 10000) break;
 
       const monthIndex = schedule.length + 1;
       const date = new Date(startDate);
@@ -136,7 +114,8 @@ export default function HomeLoanAnalyzer() {
       // safety stop at requested months if no savings/early prepayment
       if (schedule.length >= months && outstanding <= 0.0001) break;
       // if scheduled months reached and outstanding > 0, continue until paid (support negative amortization unlikely)
-      if (schedule.length > Math.max(6000, months * 2)) break; // safety
+
+      if (schedule.length > Math.max(6000, months * 2)) break;
     }
 
     // totals
@@ -153,53 +132,54 @@ export default function HomeLoanAnalyzer() {
   }
 
   // Build three scenarios: base, with prepayment, with savings link
-  const baseScenario = useMemo(() => {
-    return buildSchedule({
-      principal: loanAmount,
-      months: totalMonths,
-      annualRate,
-      emiStartISO: emiStartDate,
-      oneTimePrepay: 0,
-      recurringPrepay: 0,
-      savingsLink: false,
-      savingsInit: 0,
-      savingsMonthlyDrift: 0,
-    });
-  }, [loanAmount, totalMonths, annualRate, emiStartDate]);
+  const baseScenario = useMemo(() => { 
+    return buildSchedule({ 
+      principal: loanAmount, 
+      months: totalMonths, 
+      annualRate, 
+      emiStartISO: emiStartDate 
+    }), [loanAmount, totalMonths, annualRate, emiStartDate] });
 
-  const prepayScenario = useMemo(() => {
-    return buildSchedule({
+  const prepayScenario = useMemo(() => { 
+    return buildSchedule({ 
       principal: loanAmount,
-      months: totalMonths,
-      annualRate,
-      emiStartISO: emiStartDate,
-      oneTimePrepay: oneTimePrepayAmt || whatIfOneTime,
-      oneTimePrepayDateISO: oneTimePrepayDate || null,
-      recurringPrepay: recurringPrepayAmt,
-      recurringFreq: recurringPrepayFreq,
-      savingsLink: false,
-      savingsInit: 0,
-      savingsMonthlyDrift: 0,
-    });
-  }, [loanAmount, totalMonths, annualRate, emiStartDate, oneTimePrepayAmt, oneTimePrepayDate, recurringPrepayAmt, recurringPrepayFreq, whatIfOneTime]);
+      months: totalMonths, 
+      annualRate, 
+      emiStartISO: emiStartDate, 
+      oneTimePrepay: oneTimePrepayAmt || whatIfOneTime, 
+      oneTimePrepayDateISO: oneTimePrepayDate || null, 
+      recurringPrepay: recurringPrepayAmt, 
+      recurringFreq: recurringPrepayFreq 
+    }), [loanAmount, totalMonths, annualRate, emiStartDate, oneTimePrepayAmt, oneTimePrepayDate, recurringPrepayAmt, recurringPrepayFreq, whatIfOneTime] });
 
-  const savingsScenario = useMemo(() => {
-    return buildSchedule({
-      principal: loanAmount,
-      months: totalMonths,
-      annualRate,
-      emiStartISO: emiStartDate,
-      oneTimePrepay: 0,
-      recurringPrepay: 0,
+  const savingsScenario = useMemo(() => { 
+    return buildSchedule({ 
+      principal: loanAmount, 
+      months: totalMonths, 
+      annualRate, 
+      emiStartISO: emiStartDate, 
+      savingsLink: linkSavings, 
+      savingsInit: whatIfSavings || savingsBalance, 
+      savingsMonthlyDrift: savingsGrowthMonthly 
+    }), [loanAmount, totalMonths, annualRate, emiStartDate, linkSavings, savingsBalance, whatIfSavings, savingsGrowthMonthly]});
+
+  const prepaySavingsScenario = useMemo(() => { 
+    return buildSchedule({ 
+      principal: loanAmount, 
+      months: totalMonths, 
+      annualRate, 
+      emiStartISO: emiStartDate, 
+      oneTimePrepay: oneTimePrepayAmt || whatIfOneTime, 
+      oneTimePrepayDateISO: oneTimePrepayDate || null, 
+      recurringPrepay: recurringPrepayAmt, 
+      recurringFreq: recurringPrepayFreq, 
       savingsLink: linkSavings,
-      savingsInit: whatIfSavings || savingsBalance,
-      savingsMonthlyDrift: savingsGrowthMonthly,
-    });
-  }, [loanAmount, totalMonths, annualRate, emiStartDate, linkSavings, savingsBalance, whatIfSavings, savingsGrowthMonthly]);
+      savingsInit: whatIfSavings || savingsBalance, 
+      savingsMonthlyDrift: savingsGrowthMonthly 
+    }), [loanAmount, totalMonths, annualRate, emiStartDate, oneTimePrepayAmt, whatIfOneTime, oneTimePrepayDate, recurringPrepayAmt, recurringPrepayFreq, linkSavings, savingsBalance, whatIfSavings, savingsGrowthMonthly]});
 
-  // For charts: prepare data points by month up to max length among scenarios
   const chartData = useMemo(() => {
-    const maxLen = Math.max(baseScenario.schedule.length, prepayScenario.schedule.length, savingsScenario.schedule.length);
+    const maxLen = Math.max(baseScenario.schedule.length, prepayScenario.schedule.length, savingsScenario.schedule.length, prepaySavingsScenario.schedule.length);
     const arr = [];
     for (let i = 0; i < maxLen; i++) {
       arr.push({
@@ -207,44 +187,44 @@ export default function HomeLoanAnalyzer() {
         baseBalance: baseScenario.schedule[i] ? baseScenario.schedule[i].balance : 0,
         prepayBalance: prepayScenario.schedule[i] ? prepayScenario.schedule[i].balance : 0,
         savingsBalance: savingsScenario.schedule[i] ? savingsScenario.schedule[i].balance : 0,
+        prepaySavingsBalance: prepaySavingsScenario.schedule[i] ? prepaySavingsScenario.schedule[i].balance : 0,
         baseInterestCumu: baseScenario.schedule.slice(0, i + 1).reduce((s, x) => s + x.interestPaid, 0),
         prepayInterestCumu: prepayScenario.schedule.slice(0, i + 1).reduce((s, x) => s + x.interestPaid, 0),
         savingsInterestCumu: savingsScenario.schedule.slice(0, i + 1).reduce((s, x) => s + x.interestPaid, 0),
-        principalComponent: baseScenario.schedule[i] ? baseScenario.schedule[i].principalPaid : 0,
-        interestComponent: baseScenario.schedule[i] ? baseScenario.schedule[i].interestPaid : 0,
+        prepaySavingsInterestCumu: prepaySavingsScenario.schedule.slice(0, i + 1).reduce((s, x) => s + x.interestPaid, 0),
       });
     }
     return arr;
-  }, [baseScenario, prepayScenario, savingsScenario]);
+  }, [baseScenario, prepayScenario, savingsScenario, prepaySavingsScenario]);
 
-  // Recommendation generator (simple rules)
   function generateRecommendations() {
     const baseInterest = baseScenario.totals.totalInterest;
     const prepayInterest = prepayScenario.totals.totalInterest;
     const savingsInterest = savingsScenario.totals.totalInterest;
+    const prepaySavingsInterest = prepaySavingsScenario.totals.totalInterest;
 
     const recs = [];
     if (linkSavings) {
       const saved = Math.max(0, baseInterest - savingsInterest);
       const monthsSaved = baseScenario.schedule.length - savingsScenario.schedule.length;
-      recs.push(`Linking savings of ₹${(whatIfSavings || savingsBalance).toLocaleString()} saves approx ₹${saved.toFixed(0)} in interest and may shorten tenure by ${monthsSaved} months.`);
+      recs.push(`Linking savings saves approx ₹${saved.toFixed(0)} and may shorten tenure by ${monthsSaved} months.`);
     }
     if ((oneTimePrepayAmt || whatIfOneTime) > 0) {
-      const otp = oneTimePrepayAmt || whatIfOneTime;
       const saved = baseInterest - prepayScenario.totals.totalInterest;
-      recs.push(`One-time prepayment of ₹${otp.toLocaleString()} saves approx ₹${saved.toFixed(0)} in interest.`);
+      recs.push(`One-time prepayment saves approx ₹${saved.toFixed(0)}.`);
     }
     if (recurringPrepayAmt > 0) {
       const saved = baseInterest - prepayScenario.totals.totalInterest;
-      recs.push(`Recurring prepayment of ₹${recurringPrepayAmt} every ${recurringPrepayFreq} saves approx ₹${saved.toFixed(0)} in interest.`);
+      recs.push(`Recurring prepayment saves approx ₹${saved.toFixed(0)}.`);
     }
-
-    // Generic suggestion
-    recs.push("Consider increasing monthly prepayment or linking more savings to accelerate payoff. Verify tax/liquidity needs before sweeping savings.");
+    if (linkSavings && (oneTimePrepayAmt || whatIfOneTime || recurringPrepayAmt > 0)) {
+      const saved = baseInterest - prepaySavingsInterest;
+      recs.push(`Combining prepayment and savings saves approx ₹${saved.toFixed(0)}.`);
+    }
     return recs;
   }
 
-  const recommendations = useMemo(generateRecommendations, [baseScenario, prepayScenario, savingsScenario, linkSavings, savingsBalance, whatIfSavings, oneTimePrepayAmt, whatIfOneTime, recurringPrepayAmt]);
+  const recommendations = useMemo(generateRecommendations, [baseScenario, prepayScenario, savingsScenario, prepaySavingsScenario, linkSavings, savingsBalance, whatIfSavings, oneTimePrepayAmt, whatIfOneTime, recurringPrepayAmt]);
 
   // Export CSV helper
   function exportCSV(schedule, filename = "amortization.csv") {
@@ -470,77 +450,61 @@ export default function HomeLoanAnalyzer() {
           </div>
         </div>
 
-        <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
-          <h3 className="small">Scenario Comparison (Quick)</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Scenario</th>
-                <th>EMI</th>
-                <th>Payoff Months</th>
-                <th>Total Interest</th>
-                <th>Total Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Base</td>
-                <td>₹{baseScenario.emi.toLocaleString()}</td>
-                <td>{baseScenario.schedule.length}</td>
-                <td>₹{baseScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
-                <td>₹{(loanAmount + baseScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
-              </tr>
-              <tr>
-                <td>Prepay</td>
-                <td>₹{prepayScenario.emi.toLocaleString()}</td>
-                <td>{prepayScenario.schedule.length}</td>
-                <td>₹{prepayScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
-                <td>₹{(loanAmount + prepayScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
-              </tr>
-              <tr>
-                <td>Savings Linked</td>
-                <td>₹{savingsScenario.emi.toLocaleString()}</td>
-                <td>{savingsScenario.schedule.length}</td>
-                <td>₹{savingsScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
-                <td>₹{(loanAmount + savingsScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
-          <h3 className="small">Auto Recommendations</h3>
-          <ul className="recs">
-            {recommendations.map((r, i) => (
-              <li key={i} style={{ marginBottom: 6 }}>{r}</li>
-            ))}
-          </ul>
-        </div>
+      <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
+        <h3 className="small">Scenario Comparison (Quick)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Scenario</th>
+              <th>EMI</th>
+              <th>Payoff Months</th>
+              <th>Total Interest</th>
+              <th>Total Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Base</td>
+              <td>₹{baseScenario.emi.toLocaleString()}</td>
+              <td>{baseScenario.schedule.length}</td>
+              <td>₹{baseScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
+              <td>₹{(loanAmount + baseScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td>Prepay</td>
+              <td>₹{prepayScenario.emi.toLocaleString()}</td>
+              <td>{prepayScenario.schedule.length}</td>
+              <td>₹{prepayScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
+              <td>₹{(loanAmount + prepayScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td>Savings Linked</td>
+              <td>₹{savingsScenario.emi.toLocaleString()}</td>
+              <td>{savingsScenario.schedule.length}</td>
+              <td>₹{savingsScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
+              <td>₹{(loanAmount + savingsScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+            </tr>
+            <tr>
+              <td>Prepay + Savings</td>
+              <td>₹{prepaySavingsScenario.emi.toLocaleString()}</td>
+              <td>{prepaySavingsScenario.schedule.length}</td>
+              <td>₹{prepaySavingsScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
+              <td>₹{(loanAmount + prepaySavingsScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
+        <h3 className="small">Auto Recommendations</h3>
+        <ul className="recs">
+          {recommendations.map((r, i) => (
+            <li key={i}>{r}</li>
+          ))}
+        </ul>
+      </div>
       </div>
 
       <div className="note">Note: This calculator models a savings "offset" simply by reducing the interest-bearing principal by the savings balance each month. For bank-specific sweep/offset behaviour (e.g. daily averaging, min-balance rules, tax/legal considerations), consult your lender.</div>
     </div>
-  );
-}
-
-// small helper components for chart lines so the main file is easier to read
-function LineChartLines() {
-  return (
-    <>
-      {/* Using inline colors to keep chart readable without external CSS */}
-      <line type="monotone" dataKey="baseBalance" name="Base" stroke="#4f46e5" strokeWidth={2} />
-      <line type="monotone" dataKey="prepayBalance" name="Prepay" stroke="#10b981" strokeWidth={2} />
-      <line type="monotone" dataKey="savingsBalance" name="Savings Linked" stroke="#fb923c" strokeWidth={2} />
-    </>
-  );
-}
-
-function LineChartInterestLines() {
-  return (
-    <>
-      <line type="monotone" dataKey="baseInterestCumu" name="Base" stroke="#4f46e5" strokeWidth={2} />
-      <line type="monotone" dataKey="prepayInterestCumu" name="Prepay" stroke="#10b981" strokeWidth={2} />
-      <line type="monotone" dataKey="savingsInterestCumu" name="Savings Linked" stroke="#fb923c" strokeWidth={2} />
-    </>
   );
 }
