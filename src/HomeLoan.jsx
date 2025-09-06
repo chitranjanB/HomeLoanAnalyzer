@@ -439,6 +439,7 @@ export default function HomeLoanAnalyzer() {
                 <Line type="monotone" dataKey="baseBalance" name="Base" stroke="#8884d8" dot={false} />
                 <Line type="monotone" dataKey="prepayBalance" name="Prepay" stroke="#82ca9d" dot={false} />
                 <Line type="monotone" dataKey="savingsBalance" name="Savings Linked" stroke="#ff7300" dot={false} />
+                <Line type="monotone" dataKey="prepaySavingsBalance" name="Prepay + Savings" stroke="#d62728" dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -457,6 +458,7 @@ export default function HomeLoanAnalyzer() {
                 <Line type="monotone" dataKey="baseInterestCumu" name="Base" stroke="#8884d8" dot={false} />
                 <Line type="monotone" dataKey="prepayInterestCumu" name="Prepay" stroke="#82ca9d" dot={false} />
                 <Line type="monotone" dataKey="savingsInterestCumu" name="Savings Linked" stroke="#ff7300" dot={false} />
+                <Line type="monotone" dataKey="prepaySavingsInterestCumu" name="Prepay + Savings" stroke="#d62728" dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
