@@ -11,26 +11,29 @@ import {
 } from "recharts";
 
 export default function HomeLoanAnalyzer() {
-  const [loanAmount, setLoanAmount] = useState(5000000);
-  const [tenureYears, setTenureYears] = useState(20);
+  const [loanAmount, setLoanAmount] = useState(7500000);
+  const [tenureYears, setTenureYears] = useState(25);
   const [tenureMonths, setTenureMonths] = useState(0);
-  const [annualRate, setAnnualRate] = useState(7.4);
+  const [annualRate, setAnnualRate] = useState(7.7);
   const [emiStartDate, setEmiStartDate] = useState(() => {
     const d = new Date();
     return d.toISOString().slice(0, 10);
   });
 
-  const [oneTimePrepayAmt, setOneTimePrepayAmt] = useState(0);
-  const [oneTimePrepayDate, setOneTimePrepayDate] = useState("");
-  const [recurringPrepayAmt, setRecurringPrepayAmt] = useState(0);
+  const [oneTimePrepayAmt, setOneTimePrepayAmt] = useState("0");
+  const [oneTimePrepayDate, setOneTimePrepayDate] = useState(() => {
+    const d = new Date();
+    return d.toISOString().slice(0, 10);
+  });
+  const [recurringPrepayAmt, setRecurringPrepayAmt] = useState("100000");
   const [recurringPrepayFreq, setRecurringPrepayFreq] = useState("yearly");
 
   const [linkSavings, setLinkSavings] = useState(true);
-  const [savingsBalance, setSavingsBalance] = useState(200000);
-  const [savingsGrowthMonthly, setSavingsGrowthMonthly] = useState(0);
+  const [savingsBalance, setSavingsBalance] = useState(100000);
+  const [savingsGrowthMonthly, setSavingsGrowthMonthly] = useState(10000);
 
-  const [whatIfSavings, setWhatIfSavings] = useState(200000);
-  const [whatIfOneTime, setWhatIfOneTime] = useState(0);
+  const [whatIfSavings, setWhatIfSavings] = useState(100000);
+  const [whatIfOneTime, setWhatIfOneTime] = useState("");
 
   const totalMonths = useMemo(() => tenureYears * 12 + Number(tenureMonths), [tenureYears, tenureMonths]);
 
@@ -366,9 +369,9 @@ export default function HomeLoanAnalyzer() {
 
         {/* Savings card */}
         <div className="hla-card">
-          <h2 className="small">Savings Account Link</h2>
+          <h2 className="small">Max Savings Plan</h2>
           <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input type="checkbox" checked={linkSavings} onChange={(e) => setLinkSavings(e.target.checked)} /> Link savings to offset principal
+            <input type="checkbox" checked={linkSavings} onChange={(e) => setLinkSavings(e.target.checked)} /> Opt In
           </label>
 
           <label>Current savings balance (₹)</label>
@@ -381,10 +384,10 @@ export default function HomeLoanAnalyzer() {
 
           <h3 className="small">What-if quick sliders</h3>
           <label className="small">Test savings to link: ₹{whatIfSavings.toLocaleString()}</label>
-          <input type="range" min={0} max={loanAmount} value={whatIfSavings} onChange={(e) => setWhatIfSavings(Number(e.target.value))} />
+          <input type="number" value={whatIfSavings} onChange={(e) => setWhatIfSavings(Number(e.target.value))} />
 
           <label className="small">Test one-time prepayment: ₹{whatIfOneTime.toLocaleString()}</label>
-          <input type="range" min={0} max={loanAmount} value={whatIfOneTime} onChange={(e) => setWhatIfOneTime(Number(e.target.value))} />
+          <input type="number" value={whatIfOneTime} onChange={(e) => setWhatIfOneTime(Number(e.target.value))} />
         </div>
 
         {/* Summary cards */}
