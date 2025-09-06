@@ -44,6 +44,7 @@ export default function HomeLoanAnalyzer() {
   const [whatIfSavings, setWhatIfSavings] = useState(100000);
   const [whatIfOneTime, setWhatIfOneTime] = useState("");
 
+  const [selectedScenario, setSelectedScenario] = useState("base"); // default view
   const totalMonths = useMemo(() => tenureYears * 12 + Number(tenureMonths), [tenureYears, tenureMonths]);
 
   function monthlyEMI(P, rAnnual, nMonths) {
@@ -310,6 +311,21 @@ export default function HomeLoanAnalyzer() {
     URL.revokeObjectURL(url);
   }
 
+  const currentSchedule = useMemo(() => {
+    switch (selectedScenario) {
+      case "prepay":
+        return prepayScenario.schedule;
+      case "savings":
+        return savingsScenario.schedule;
+      case "prepaySavings":
+        return prepaySavingsScenario.schedule;
+      case "base":
+      default:
+        return baseScenario.schedule;
+    }
+  }, [selectedScenario, baseScenario, prepayScenario, savingsScenario, prepaySavingsScenario]);
+
+
   // Minimal CSS included as a string so the single-file component has styling without Tailwind dependency
   const styles = `
   :root{
@@ -323,37 +339,32 @@ export default function HomeLoanAnalyzer() {
     --shadow: 0 6px 18px rgba(18,38,63,0.06);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   }
-  .hla-container{padding:16px;margin:0 auto;background:var(--bg)}
-
-  /* mobile first → single column */
-  .hla-grid{display:grid;grid-template-columns:1fr;gap:16px}
-
-  /* larger screens get 2 or 3 columns */
-  @media(min-width:768px){.hla-grid{grid-template-columns:repeat(2,1fr)}}
-  @media(min-width:1100px){.hla-grid{grid-template-columns:repeat(3,1fr)}}
-
-  .hla-card{background:var(--card);padding:16px;border-radius:var(--radius);box-shadow:var(--shadow);}
-  .hla-title{font-size:22px;font-weight:700;margin-bottom:12px;text-align:center}
-  label{display:block;font-size:14px;color:var(--muted);margin-top:8px}
-  input,select{width:90%;padding:12px;border-radius:10px;border:1px solid #e6eef6;background:#fff;font-size:15px}
+  .hla-container{padding:20px;max-width:1150px;margin:0 auto;background:var(--bg)}
+  .hla-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:900px){.hla-grid{grid-template-columns:1fr}}
+  .hla-card{background:var(--card);padding:18px;border-radius:var(--radius);box-shadow:var(--shadow);}
+  .hla-title{font-size:20px;font-weight:600;margin-bottom:8px}
+  label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
+  input[type="number"],input[type="date"],select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6eef6;background:#fff;font-size:14px}
   .small{font-size:13px;color:var(--muted)}
-  .summary-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
-  @media(min-width:600px){.summary-grid{grid-template-columns:repeat(2,1fr)}}
-  .summary-card{background:#f8fafc;padding:14px;border-radius:12px;text-align:center}
+  .summary-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
+  .summary-card{background:#f8fafc;padding:12px;border-radius:10px}
   .big-num{font-size:18px;font-weight:700}
-  .btn{display:inline-block;padding:10px 14px;border-radius:10px;background:var(--accent);color:white;border:none;cursor:pointer;margin-top:8px;font-size:14px}
+  .btn{display:inline-block;padding:8px 12px;border-radius:10px;background:var(--accent);color:white;border:none;cursor:pointer}
   .btn.green{background:var(--accent-2)}
-
-  .charts-grid{display:grid;grid-template-columns:1fr;gap:16px;margin-top:18px}
-  @media(min-width:900px){.charts-grid{grid-template-columns:1fr 1fr}}
-
-  .table-wrapper{overflow-x:auto;max-height:400px}
-  table{width:100%;border-collapse:collapse;font-size:13px;min-width:600px}
+  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+  @media(max-width:1100px){.charts-grid{grid-template-columns:1fr}}
+  .table-wrapper{overflow:auto;max-height:420px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
   th,td{padding:8px;border-bottom:1px solid #eef4fb;text-align:left}
-  th{position:sticky;top:0;background:#fff;font-size:12px}
+  th{position:sticky;top:0;background:#fff}
   ul.recs{margin:0;padding-left:18px}
-  .note{font-size:12px;color:var(--muted);margin-top:10px;text-align:center}
+  .note{font-size:12px;color:var(--muted);margin-top:10px}
+
+  /* slider style */
+  input[type=range]{width:100%}
   `;
+
 
   return (
     <div className="hla-container">
@@ -495,8 +506,31 @@ export default function HomeLoanAnalyzer() {
           </div>
         </div>
 
+  
       <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
         <h3 className="small">Amortization Schedule (Base)</h3>
+        <div style={{ display: 'flex'}}>
+          <label>
+            <input type="radio" name="scenario" value="base"
+              checked={selectedScenario === "base"}
+              onChange={(e) => setSelectedScenario(e.target.value)} /> Base
+          </label>
+          <label style={{ marginLeft: 12 }}>
+            <input type="radio" name="scenario" value="prepay"
+              checked={selectedScenario === "prepay"}
+              onChange={(e) => setSelectedScenario(e.target.value)} /> Prepay
+          </label>
+          <label style={{ marginLeft: 12 }}>
+            <input type="radio" name="scenario" value="savings"
+              checked={selectedScenario === "savings"}
+              onChange={(e) => setSelectedScenario(e.target.value)} /> Savings Linked
+          </label>
+          <label style={{ marginLeft: 12 }}>
+            <input type="radio" name="scenario" value="prepaySavings"
+              checked={selectedScenario === "prepaySavings"}
+              onChange={(e) => setSelectedScenario(e.target.value)} /> Prepay + Savings
+          </label>
+        </div>
         <div className="table-wrapper">
           <table>
             <thead>
@@ -510,7 +544,7 @@ export default function HomeLoanAnalyzer() {
               </tr>
             </thead>
             <tbody>
-              {baseScenario.schedule.slice(0, 500).map((r) => (
+              {currentSchedule.slice(0, 500).map((r) => (
                 <tr key={r.month}>
                   <td>{r.month}</td>
                   <td>{r.date}</td>
