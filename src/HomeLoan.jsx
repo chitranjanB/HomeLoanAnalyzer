@@ -53,30 +53,36 @@ export default function HomeLoanAnalyzer() {
   }
 
    // Generate amortization schedule considering: prepayments (one-time, recurring), savings offset (simple "offset balance reduces principal for interest calc")
-  function buildSchedule({ principal, months, annualRate, emiStartISO, oneTimePrepay = 0, oneTimePrepayDateISO = null, recurringPrepay = 0, recurringFreq = "yearly", savingsLink = false, savingsInit = 0, savingsMonthlyDrift = 0 }) {
+  function buildSchedule({
+    principal,
+    months,
+    annualRate,
+    emiStartISO,
+    oneTimePrepay = 0,
+    oneTimePrepayDateISO = null,
+    recurringPrepay = 0,
+    recurringFreq = "yearly",
+    recurringStart = 2,
+    savingsLink = false,
+    savingsInit = 0,
+    savingsMonthlyDrift = 0,
+  }) {
     const schedule = [];
     let outstanding = principal;
     const monthlyRate = annualRate / 12 / 100;
     const emi = monthlyEMI(principal, annualRate, months);
-
-    // Convert start date
     const startDate = new Date(emiStartISO);
     const recurringInterval = recurringFreq === "monthly" ? 1 : recurringFreq === "quarterly" ? 3 : 12;
-
-    // For savings offset: we'll assume the savings balance reduces the interest-bearing principal each month by being "linked".
-    // Effective principal for interest calculation = max(0, outstanding - savingsBalance)
     let currSavings = savingsInit;
 
-    for (let m = 1; m <= 1000; m++) {
-      // break if fully paid
+    for (let m = 1; m <= months; m++) {
       if (outstanding <= 0.0001) break;
-      if (m > 10000) break;
 
       const monthIndex = schedule.length + 1;
       const date = new Date(startDate);
       date.setMonth(startDate.getMonth() + schedule.length);
 
-      // Apply one-time prepay if date matches month
+      // 1) Apply one-time prepayment if scheduled for this month
       if (oneTimePrepayDateISO) {
         const otp = new Date(oneTimePrepayDateISO);
         if (otp.getFullYear() === date.getFullYear() && otp.getMonth() === date.getMonth()) {
@@ -84,37 +90,29 @@ export default function HomeLoanAnalyzer() {
         }
       }
 
-      // Recurring prepay if month matches frequency
-      if (recurringPrepay > 0 && ((monthIndex - 1) % recurringInterval === 0)) {
+      // 2) Apply recurring prepayment (if month matches frequency and start)
+      if (recurringPrepay > 0 && monthIndex >= recurringStart && (monthIndex - recurringStart) % recurringInterval === 0) {
         outstanding = Math.max(0, outstanding - recurringPrepay);
       }
 
-      // Calculate effective principal after savings offset
-      let effectivePrincipal = outstanding;
-      if (savingsLink) {
-        effectivePrincipal = Math.max(0, outstanding - currSavings);
-      }
+      // 3) Effective principal for interest calculation
+      const effectivePrincipal = savingsLink ? Math.max(0, outstanding - currSavings) : outstanding;
 
-      // Interest this month based on effective principal
+      // 4) Interest payment for this month
       const interestPayment = effectivePrincipal * monthlyRate;
 
-      // Principal portion = EMI - interest; but if EMI > outstanding+interest -> last payment
+      // 5) Principal portion of EMI (capped to outstanding)
       let principalPayment = emi - interestPayment;
-      if (principalPayment > outstanding) {
-        principalPayment = outstanding;
-      }
-
-      // If EMI would be less than interest (rare for negative amortization), cap
+      if (principalPayment > outstanding) principalPayment = outstanding;
       if (principalPayment < 0) principalPayment = 0;
 
+      // 6) Total payment & update outstanding
       const payment = principalPayment + interestPayment;
       outstanding = Math.max(0, outstanding - principalPayment);
 
-      // After payment, savings may grow/shrink
-      currSavings = Math.max(0, currSavings + Number(savingsMonthlyDrift));
-
+      // 7) Save the current month schedule, including current savings
       schedule.push({
-        month: schedule.length + 1,
+        month: monthIndex,
         date: date.toISOString().slice(0, 10),
         payment: Number(payment.toFixed(2)),
         principalPaid: Number(principalPayment.toFixed(2)),
@@ -123,14 +121,11 @@ export default function HomeLoanAnalyzer() {
         savingsLinked: Number(currSavings.toFixed(2)),
       });
 
-      // safety stop at requested months if no savings/early prepayment
-      if (schedule.length >= months && outstanding <= 0.0001) break;
-      // if scheduled months reached and outstanding > 0, continue until paid (support negative amortization unlikely)
-
-      if (schedule.length > Math.max(6000, months * 2)) break;
+      // 8) Update savings for next month
+      currSavings = Math.max(0, currSavings + Number(savingsMonthlyDrift));
     }
 
-    // totals
+    // Totals
     const totals = schedule.reduce(
       (acc, s) => {
         acc.totalInterest += s.interestPaid;
@@ -142,6 +137,7 @@ export default function HomeLoanAnalyzer() {
 
     return { schedule, totals, emi: Number(emi.toFixed(2)) };
   }
+
 
   const baseScenario = useMemo(() => {
     return buildSchedule({
@@ -273,6 +269,18 @@ export default function HomeLoanAnalyzer() {
       if (r.interestSaved <= 0) return null;
       let text = `${r.name}: Save ₹${formatINR(r.interestSaved)} (${r.percentSaved}% of interest)`;
       if (r.monthsSaved > 0) text += `, reduce tenure by ${r.monthsSaved} month${r.monthsSaved > 1 ? "s" : ""}.`;
+
+      // Additional suggestions
+      if (r.name.includes("Savings")) {
+        text += ` Effective interest rate reduction ≈ ${(annualRate - ((r.interestSaved / loanAmount) * annualRate)).toFixed(2)}%.`;
+      }
+      if (oneTimePrepayAmt || whatIfOneTime) {
+        text += ` One-time prepayment of ₹${formatINR(oneTimePrepayAmt || whatIfOneTime)} saves interest early in loan term.`;
+      }
+      if (recurringPrepayAmt) {
+        text += ` Recurring prepayment of ₹${formatINR(recurringPrepayAmt)} ${recurringPrepayFreq} reduces tenure.`;
+      }
+
       return text;
     }).filter(Boolean);
 
@@ -499,7 +507,6 @@ export default function HomeLoanAnalyzer() {
                 <th>Principal</th>
                 <th>Interest</th>
                 <th>Balance</th>
-                <th>Savings Linked</th>
               </tr>
             </thead>
             <tbody>
@@ -511,7 +518,6 @@ export default function HomeLoanAnalyzer() {
                   <td>₹{formatINR(r.principalPaid)}</td>
                   <td>₹{formatINR(r.interestPaid)}</td>
                   <td>₹{formatINR(r.balance)}</td>
-                  <td>₹{formatINR(r.savingsLinked)}</td>
                 </tr>
               ))}
             </tbody>
