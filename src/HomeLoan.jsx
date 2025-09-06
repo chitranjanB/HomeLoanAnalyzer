@@ -2,16 +2,12 @@ import React, { useMemo, useState } from "react";
 import {
   LineChart,
   Line,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   Tooltip,
   CartesianGrid,
   Legend,
   ResponsiveContainer,
-  ComposedChart,
-  Area,
 } from "recharts";
 
 // Default export React component
@@ -264,47 +260,87 @@ export default function HomeLoanAnalyzer() {
     URL.revokeObjectURL(url);
   }
 
+  // Minimal CSS included as a string so the single-file component has styling without Tailwind dependency
+  const styles = `
+  :root{
+    --bg:#f6f8fb;
+    --card:#ffffff;
+    --muted:#6b7280;
+    --accent:#0ea5e9;
+    --accent-2:#10b981;
+    --danger:#ef4444;
+    --radius:14px;
+    --shadow: 0 6px 18px rgba(18,38,63,0.06);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  }
+  .hla-container{padding:20px;max-width:1150px;margin:0 auto;background:var(--bg)}
+  .hla-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:900px){.hla-grid{grid-template-columns:1fr}}
+  .hla-card{background:var(--card);padding:18px;border-radius:var(--radius);box-shadow:var(--shadow);}
+  .hla-title{font-size:20px;font-weight:600;margin-bottom:8px}
+  label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
+  input[type="number"],input[type="date"],select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6eef6;background:#fff;font-size:14px}
+  .small{font-size:13px;color:var(--muted)}
+  .summary-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:10px}
+  .summary-card{background:#f8fafc;padding:12px;border-radius:10px}
+  .big-num{font-size:18px;font-weight:700}
+  .btn{display:inline-block;padding:8px 12px;border-radius:10px;background:var(--accent);color:white;border:none;cursor:pointer}
+  .btn.green{background:var(--accent-2)}
+  .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+  @media(max-width:1100px){.charts-grid{grid-template-columns:1fr}}
+  .table-wrapper{overflow:auto;max-height:420px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px;border-bottom:1px solid #eef4fb;text-align:left}
+  th{position:sticky;top:0;background:#fff}
+  ul.recs{margin:0;padding-left:18px}
+  .note{font-size:12px;color:var(--muted);margin-top:10px}
+
+  /* slider style */
+  input[type=range]{width:100%}
+  `;
+
   // UI layout
   return (
-    <div className="p-4 max-w-7xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-4">Home Loan Analyzer</h1>
+    <div className="hla-container">
+      <style dangerouslySetInnerHTML={{ __html: styles }} />
+      <h1 className="hla-title">Home Loan Analyzer</h1>
 
       {/* Inputs Card */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="p-4 bg-white rounded-2xl shadow-sm">
-          <h2 className="font-medium mb-2">Loan Inputs</h2>
-          <label className="block text-sm">Loan Amount (₹)</label>
-          <input className="w-full p-2 border rounded mt-1" type="number" value={loanAmount} onChange={(e) => setLoanAmount(Number(e.target.value))} />
+      <div className="hla-grid">
+        <div className="hla-card">
+          <h2 className="small">Loan Inputs</h2>
+          <label>Loan Amount (₹)</label>
+          <input type="number" value={loanAmount} onChange={(e) => setLoanAmount(Number(e.target.value))} />
 
-          <div className="flex gap-2 mt-2">
-            <div>
-              <label className="block text-sm">Tenure (yrs)</label>
-              <input type="number" className="p-2 border rounded mt-1 w-24" value={tenureYears} onChange={(e) => setTenureYears(Number(e.target.value))} />
+          <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
+            <div style={{ flex: 1 }}>
+              <label>Tenure (yrs)</label>
+              <input type="number" value={tenureYears} onChange={(e) => setTenureYears(Number(e.target.value))} />
             </div>
-            <div>
-              <label className="block text-sm">+ months</label>
-              <input type="number" className="p-2 border rounded mt-1 w-24" value={tenureMonths} onChange={(e) => setTenureMonths(Number(e.target.value))} />
+            <div style={{ width: 120 }}>
+              <label>+ months</label>
+              <input type="number" value={tenureMonths} onChange={(e) => setTenureMonths(Number(e.target.value))} />
             </div>
           </div>
 
-          <label className="block text-sm mt-2">Annual Interest Rate (%)</label>
-          <input className="w-full p-2 border rounded mt-1" type="number" step="0.01" value={annualRate} onChange={(e) => setAnnualRate(Number(e.target.value))} />
+          <label>Annual Interest Rate (%)</label>
+          <input type="number" step="0.01" value={annualRate} onChange={(e) => setAnnualRate(Number(e.target.value))} />
 
-          <label className="block text-sm mt-2">EMI Start Date</label>
-          <input className="w-full p-2 border rounded mt-1" type="date" value={emiStartDate} onChange={(e) => setEmiStartDate(e.target.value)} />
+          <label>EMI Start Date</label>
+          <input type="date" value={emiStartDate} onChange={(e) => setEmiStartDate(e.target.value)} />
 
-          <hr className="my-3" />
+          <hr style={{ margin: "14px 0" }} />
 
-          <h3 className="font-medium">Prepayment Options</h3>
-          <label className="block text-sm mt-2">One-time Prepayment (₹)</label>
-          <input type="number" className="w-full p-2 border rounded mt-1" value={oneTimePrepayAmt} onChange={(e) => setOneTimePrepayAmt(Number(e.target.value))} />
-          <label className="block text-sm mt-2">Date for one-time prepayment</label>
-          <input type="date" className="w-full p-2 border rounded mt-1" value={oneTimePrepayDate} onChange={(e) => setOneTimePrepayDate(e.target.value)} />
+          <h3 className="small">Prepayment Options</h3>
+          <label>One-time Prepayment (₹)</label>
+          <input type="number" value={oneTimePrepayAmt} onChange={(e) => setOneTimePrepayAmt(Number(e.target.value))} />
+          <label>Date for one-time prepayment</label>
+          <input type="date" value={oneTimePrepayDate} onChange={(e) => setOneTimePrepayDate(e.target.value)} />
 
-          <label className="block text-sm mt-2">Recurring prepayment (₹)</label>
-          <div className="flex gap-2">
-            <input type="number" className="flex-1 p-2 border rounded mt-1" value={recurringPrepayAmt} onChange={(e) => setRecurringPrepayAmt(Number(e.target.value))} />
-            <select className="p-2 border rounded mt-1" value={recurringPrepayFreq} onChange={(e) => setRecurringPrepayFreq(e.target.value)}>
+          <label>Recurring prepayment (₹)</label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input type="number" style={{ flex: 1 }} value={recurringPrepayAmt} onChange={(e) => setRecurringPrepayAmt(Number(e.target.value))} />
+            <select value={recurringPrepayFreq} onChange={(e) => setRecurringPrepayFreq(e.target.value)}>
               <option value="monthly">Monthly</option>
               <option value="quarterly">Quarterly</option>
               <option value="yearly">Yearly</option>
@@ -313,61 +349,61 @@ export default function HomeLoanAnalyzer() {
         </div>
 
         {/* Savings card */}
-        <div className="p-4 bg-white rounded-2xl shadow-sm">
-          <h2 className="font-medium mb-2">Savings Account Link</h2>
-          <label className="flex items-center gap-2">
+        <div className="hla-card">
+          <h2 className="small">Savings Account Link</h2>
+          <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <input type="checkbox" checked={linkSavings} onChange={(e) => setLinkSavings(e.target.checked)} /> Link savings to offset principal
           </label>
 
-          <label className="block text-sm mt-2">Current savings balance (₹)</label>
-          <input type="number" className="w-full p-2 border rounded mt-1" value={savingsBalance} onChange={(e) => setSavingsBalance(Number(e.target.value))} />
+          <label>Current savings balance (₹)</label>
+          <input type="number" value={savingsBalance} onChange={(e) => setSavingsBalance(Number(e.target.value))} />
 
-          <label className="block text-sm mt-2">Monthly growth/decline in savings (₹)</label>
-          <input type="number" className="w-full p-2 border rounded mt-1" value={savingsGrowthMonthly} onChange={(e) => setSavingsGrowthMonthly(Number(e.target.value))} />
+          <label>Monthly growth/decline in savings (₹)</label>
+          <input type="number" value={savingsGrowthMonthly} onChange={(e) => setSavingsGrowthMonthly(Number(e.target.value))} />
 
-          <hr className="my-3" />
+          <hr style={{ margin: "14px 0" }} />
 
-          <h3 className="font-medium">What-if quick sliders</h3>
-          <label className="block text-sm mt-2">Test savings to link: ₹{whatIfSavings.toLocaleString()}</label>
+          <h3 className="small">What-if quick sliders</h3>
+          <label className="small">Test savings to link: ₹{whatIfSavings.toLocaleString()}</label>
           <input type="range" min={0} max={loanAmount} value={whatIfSavings} onChange={(e) => setWhatIfSavings(Number(e.target.value))} />
 
-          <label className="block text-sm mt-2">Test one-time prepayment: ₹{whatIfOneTime.toLocaleString()}</label>
+          <label className="small">Test one-time prepayment: ₹{whatIfOneTime.toLocaleString()}</label>
           <input type="range" min={0} max={loanAmount} value={whatIfOneTime} onChange={(e) => setWhatIfOneTime(Number(e.target.value))} />
         </div>
 
         {/* Summary cards */}
-        <div className="p-4 bg-white rounded-2xl shadow-sm">
-          <h2 className="font-medium mb-2">Summary</h2>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="p-3 bg-gray-50 rounded">
-              <div className="text-sm">EMI (Base)</div>
-              <div className="text-xl font-semibold">₹{baseScenario.emi.toLocaleString()}</div>
+        <div className="hla-card">
+          <h2 className="small">Summary</h2>
+          <div className="summary-grid">
+            <div className="summary-card">
+              <div className="small">EMI (Base)</div>
+              <div className="big-num">₹{baseScenario.emi.toLocaleString()}</div>
             </div>
-            <div className="p-3 bg-gray-50 rounded">
-              <div className="text-sm">Total Interest (Base)</div>
-              <div className="text-xl font-semibold">₹{baseScenario.totals.totalInterest.toFixed(0).toLocaleString()}</div>
+            <div className="summary-card">
+              <div className="small">Total Interest (Base)</div>
+              <div className="big-num">₹{baseScenario.totals.totalInterest.toFixed(0).toLocaleString()}</div>
             </div>
-            <div className="p-3 bg-gray-50 rounded">
-              <div className="text-sm">Payoff after (months)</div>
-              <div className="text-xl font-semibold">{baseScenario.schedule.length}</div>
+            <div className="summary-card">
+              <div className="small">Payoff after (months)</div>
+              <div className="big-num">{baseScenario.schedule.length}</div>
             </div>
-            <div className="p-3 bg-gray-50 rounded">
-              <div className="text-sm">Total Cost (Principal + Interest)</div>
-              <div className="text-xl font-semibold">₹{(loanAmount + baseScenario.totals.totalInterest).toFixed(0).toLocaleString()}</div>
+            <div className="summary-card">
+              <div className="small">Total Cost (Principal + Interest)</div>
+              <div className="big-num">₹{(loanAmount + baseScenario.totals.totalInterest).toFixed(0).toLocaleString()}</div>
             </div>
           </div>
 
-          <div className="mt-4">
-            <button className="px-4 py-2 rounded bg-sky-600 text-white" onClick={() => exportCSV(baseScenario.schedule, "base_amortization.csv")}>Export Base CSV</button>
-            <button className="ml-2 px-4 py-2 rounded bg-green-600 text-white" onClick={() => exportCSV(prepayScenario.schedule, "prepay_amortization.csv")}>Export Prepay CSV</button>
+          <div style={{ marginTop: 12 }}>
+            <button className="btn" onClick={() => exportCSV(baseScenario.schedule, "base_amortization.csv")}>Export Base CSV</button>
+            <button className="btn green" style={{ marginLeft: 8 }} onClick={() => exportCSV(prepayScenario.schedule, "prepay_amortization.csv")}>Export Prepay CSV</button>
           </div>
         </div>
       </div>
 
       {/* Charts and schedule tabs */}
-      <div className="mt-6 grid lg:grid-cols-2 gap-4">
-        <div className="p-4 bg-white rounded-2xl shadow-sm">
-          <h3 className="font-medium mb-2">Remaining Balance Comparison</h3>
+      <div className="charts-grid">
+        <div className="hla-card">
+          <h3 className="small">Remaining Balance Comparison</h3>
           <div style={{ width: "100%", height: 300 }}>
             <ResponsiveContainer>
               <LineChart data={chartData}>
@@ -384,8 +420,8 @@ export default function HomeLoanAnalyzer() {
           </div>
         </div>
 
-        <div className="p-4 bg-white rounded-2xl shadow-sm">
-          <h3 className="font-medium mb-2">Cumulative Interest Comparison</h3>
+        <div className="hla-card">
+          <h3 className="small">Cumulative Interest Comparison</h3>
           <div style={{ width: "100%", height: 300 }}>
             <ResponsiveContainer>
               <LineChart data={chartData}>
@@ -402,31 +438,31 @@ export default function HomeLoanAnalyzer() {
           </div>
         </div>
 
-        <div className="p-4 bg-white rounded-2xl shadow-sm lg:col-span-2">
-          <h3 className="font-medium mb-2">Amortization Schedule (Base)</h3>
-          <div className="overflow-auto max-h-80">
-            <table className="w-full text-sm table-auto border-collapse">
-              <thead className="sticky top-0 bg-white">
+        <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
+          <h3 className="small">Amortization Schedule (Base)</h3>
+          <div className="table-wrapper">
+            <table>
+              <thead>
                 <tr>
-                  <th className="p-2 border">Month</th>
-                  <th className="p-2 border">Date</th>
-                  <th className="p-2 border">Payment</th>
-                  <th className="p-2 border">Principal</th>
-                  <th className="p-2 border">Interest</th>
-                  <th className="p-2 border">Balance</th>
-                  <th className="p-2 border">Savings Linked</th>
+                  <th>Month</th>
+                  <th>Date</th>
+                  <th>Payment</th>
+                  <th>Principal</th>
+                  <th>Interest</th>
+                  <th>Balance</th>
+                  <th>Savings Linked</th>
                 </tr>
               </thead>
               <tbody>
                 {baseScenario.schedule.slice(0, 500).map((r) => (
                   <tr key={r.month}>
-                    <td className="p-2 border">{r.month}</td>
-                    <td className="p-2 border">{r.date}</td>
-                    <td className="p-2 border">₹{r.payment.toLocaleString()}</td>
-                    <td className="p-2 border">₹{r.principalPaid.toLocaleString()}</td>
-                    <td className="p-2 border">₹{r.interestPaid.toLocaleString()}</td>
-                    <td className="p-2 border">₹{r.balance.toLocaleString()}</td>
-                    <td className="p-2 border">₹{r.savingsLinked.toLocaleString()}</td>
+                    <td>{r.month}</td>
+                    <td>{r.date}</td>
+                    <td>₹{r.payment.toLocaleString()}</td>
+                    <td>₹{r.principalPaid.toLocaleString()}</td>
+                    <td>₹{r.interestPaid.toLocaleString()}</td>
+                    <td>₹{r.balance.toLocaleString()}</td>
+                    <td>₹{r.savingsLinked.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -434,55 +470,77 @@ export default function HomeLoanAnalyzer() {
           </div>
         </div>
 
-        <div className="p-4 bg-white rounded-2xl shadow-sm lg:col-span-2">
-          <h3 className="font-medium mb-2">Scenario Comparison (Quick)</h3>
-          <table className="w-full text-sm table-auto border-collapse">
+        <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
+          <h3 className="small">Scenario Comparison (Quick)</h3>
+          <table>
             <thead>
               <tr>
-                <th className="p-2 border">Scenario</th>
-                <th className="p-2 border">EMI</th>
-                <th className="p-2 border">Payoff Months</th>
-                <th className="p-2 border">Total Interest</th>
-                <th className="p-2 border">Total Cost</th>
+                <th>Scenario</th>
+                <th>EMI</th>
+                <th>Payoff Months</th>
+                <th>Total Interest</th>
+                <th>Total Cost</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td className="p-2 border">Base</td>
-                <td className="p-2 border">₹{baseScenario.emi.toLocaleString()}</td>
-                <td className="p-2 border">{baseScenario.schedule.length}</td>
-                <td className="p-2 border">₹{baseScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
-                <td className="p-2 border">₹{(loanAmount + baseScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+                <td>Base</td>
+                <td>₹{baseScenario.emi.toLocaleString()}</td>
+                <td>{baseScenario.schedule.length}</td>
+                <td>₹{baseScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
+                <td>₹{(loanAmount + baseScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
               </tr>
               <tr>
-                <td className="p-2 border">Prepay</td>
-                <td className="p-2 border">₹{prepayScenario.emi.toLocaleString()}</td>
-                <td className="p-2 border">{prepayScenario.schedule.length}</td>
-                <td className="p-2 border">₹{prepayScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
-                <td className="p-2 border">₹{(loanAmount + prepayScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+                <td>Prepay</td>
+                <td>₹{prepayScenario.emi.toLocaleString()}</td>
+                <td>{prepayScenario.schedule.length}</td>
+                <td>₹{prepayScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
+                <td>₹{(loanAmount + prepayScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
               </tr>
               <tr>
-                <td className="p-2 border">Savings Linked</td>
-                <td className="p-2 border">₹{savingsScenario.emi.toLocaleString()}</td>
-                <td className="p-2 border">{savingsScenario.schedule.length}</td>
-                <td className="p-2 border">₹{savingsScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
-                <td className="p-2 border">₹{(loanAmount + savingsScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
+                <td>Savings Linked</td>
+                <td>₹{savingsScenario.emi.toLocaleString()}</td>
+                <td>{savingsScenario.schedule.length}</td>
+                <td>₹{savingsScenario.totals.totalInterest.toFixed(0).toLocaleString()}</td>
+                <td>₹{(loanAmount + savingsScenario.totals.totalInterest).toFixed(0).toLocaleString()}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <div className="p-4 bg-white rounded-2xl shadow-sm lg:col-span-2">
-          <h3 className="font-medium mb-2">Auto Recommendations</h3>
-          <ul className="list-disc pl-6">
+        <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
+          <h3 className="small">Auto Recommendations</h3>
+          <ul className="recs">
             {recommendations.map((r, i) => (
-              <li key={i} className="mb-1">{r}</li>
+              <li key={i} style={{ marginBottom: 6 }}>{r}</li>
             ))}
           </ul>
         </div>
       </div>
 
-      <div className="mt-6 text-sm text-gray-600">Note: This calculator models a savings "offset" simply by reducing the interest-bearing principal by the savings balance each month. For bank-specific sweep/offset behaviour (e.g. daily averaging, min-balance rules, tax/legal considerations), consult your lender.</div>
+      <div className="note">Note: This calculator models a savings "offset" simply by reducing the interest-bearing principal by the savings balance each month. For bank-specific sweep/offset behaviour (e.g. daily averaging, min-balance rules, tax/legal considerations), consult your lender.</div>
     </div>
+  );
+}
+
+// small helper components for chart lines so the main file is easier to read
+function LineChartLines() {
+  return (
+    <>
+      {/* Using inline colors to keep chart readable without external CSS */}
+      <line type="monotone" dataKey="baseBalance" name="Base" stroke="#4f46e5" strokeWidth={2} />
+      <line type="monotone" dataKey="prepayBalance" name="Prepay" stroke="#10b981" strokeWidth={2} />
+      <line type="monotone" dataKey="savingsBalance" name="Savings Linked" stroke="#fb923c" strokeWidth={2} />
+    </>
+  );
+}
+
+function LineChartInterestLines() {
+  return (
+    <>
+      <line type="monotone" dataKey="baseInterestCumu" name="Base" stroke="#4f46e5" strokeWidth={2} />
+      <line type="monotone" dataKey="prepayInterestCumu" name="Prepay" stroke="#10b981" strokeWidth={2} />
+      <line type="monotone" dataKey="savingsInterestCumu" name="Savings Linked" stroke="#fb923c" strokeWidth={2} />
+    </>
   );
 }
