@@ -8,52 +8,75 @@ import {
   CartesianGrid,
   Legend,
   ResponsiveContainer,
+  BarChart,
+  Bar,
 } from "recharts";
 
-// helper for lakh/crore format with 2 decimals
+/** ---------- Utilities ---------- **/
+
+// robust INR formatter
 function formatINR(num) {
-  if (num == null || isNaN(num)) return "0.00";
-  return num.toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const n = Number.isFinite(num) ? num : 0;
+  return n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// safe number parser
+function toNum(v, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** ---------- Core Component ---------- **/
+
 export default function HomeLoanAnalyzer() {
+  /** Inputs */
   const [loanAmount, setLoanAmount] = useState(7500000);
   const [tenureYears, setTenureYears] = useState(25);
   const [tenureMonths, setTenureMonths] = useState(0);
   const [annualRate, setAnnualRate] = useState(7.7);
-  const [emiStartDate, setEmiStartDate] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
-  });
+  const [emiStartDate, setEmiStartDate] = useState(() => new Date().toISOString().slice(0, 10));
 
+  // Prepayment
   const [oneTimePrepayAmt, setOneTimePrepayAmt] = useState("");
-  const [oneTimePrepayDate, setOneTimePrepayDate] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
-  });
+  const [oneTimePrepayDate, setOneTimePrepayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [recurringPrepayAmt, setRecurringPrepayAmt] = useState("100000");
-  const [recurringPrepayFreq, setRecurringPrepayFreq] = useState("yearly");
+  const [recurringPrepayFreq, setRecurringPrepayFreq] = useState("yearly"); // monthly|quarterly|yearly
 
+  // Savings offset
   const [linkSavings, setLinkSavings] = useState(true);
   const [savingsBalance, setSavingsBalance] = useState(100000);
   const [savingsGrowthMonthly, setSavingsGrowthMonthly] = useState(10000);
 
+  // Quick “what-if”
   const [whatIfSavings, setWhatIfSavings] = useState(100000);
   const [whatIfOneTime, setWhatIfOneTime] = useState("");
 
-  const [selectedScenario, setSelectedScenario] = useState("base"); // default view
-  const totalMonths = useMemo(() => tenureYears * 12 + Number(tenureMonths), [tenureYears, tenureMonths]);
+  const [selectedScenario, setSelectedScenario] = useState("base");
+
+  const totalMonths = useMemo(
+    () => toNum(tenureYears) * 12 + toNum(tenureMonths),
+    [tenureYears, tenureMonths]
+  );
+
+  /** ---------- Financial Math ---------- **/
 
   function monthlyEMI(P, rAnnual, nMonths) {
-    const r = rAnnual / 12 / 100;
-    if (r === 0) return P / nMonths;
-    return (P * r * Math.pow(1 + r, nMonths)) / (Math.pow(1 + r, nMonths) - 1);
+    const principal = Math.max(0, toNum(P));
+    const n = Math.max(1, toNum(nMonths, 1));
+    const r = toNum(rAnnual) / 12 / 100;
+    if (r === 0) return principal / n;
+    const pow = Math.pow(1 + r, n);
+    return (principal * r * pow) / (pow - 1);
   }
 
-   // Generate amortization schedule considering: prepayments (one-time, recurring), savings offset (simple "offset balance reduces principal for interest calc")
+  /**
+   * Build amortization schedule with:
+   * - one-time prepay (on matching year-month)
+   * - recurring prepay (monthly/quarterly/yearly)
+   * - savings “offset” (reduce interest-bearing principal by savings)
+   * Notes:
+   * - Savings change is applied at end of month for next month’s interest calc
+   */
   function buildSchedule({
     principal,
     months,
@@ -63,57 +86,52 @@ export default function HomeLoanAnalyzer() {
     oneTimePrepayDateISO = null,
     recurringPrepay = 0,
     recurringFreq = "yearly",
-    recurringStart = 2,
+    recurringStart = 2, // start after month 1 by default
     savingsLink = false,
     savingsInit = 0,
     savingsMonthlyDrift = 0,
   }) {
     const schedule = [];
-    let outstanding = principal;
-    const monthlyRate = annualRate / 12 / 100;
-    const emi = monthlyEMI(principal, annualRate, months);
+    let outstanding = Math.max(0, toNum(principal));
+    const monthlyRate = toNum(annualRate) / 12 / 100;
+    const emi = monthlyEMI(outstanding, annualRate, months);
     const startDate = new Date(emiStartISO);
-    const recurringInterval = recurringFreq === "monthly" ? 1 : recurringFreq === "quarterly" ? 3 : 12;
-    let currSavings = savingsInit;
+    const interval = recurringFreq === "monthly" ? 1 : recurringFreq === "quarterly" ? 3 : 12;
+    let currSavings = Math.max(0, toNum(savingsInit));
 
-    for (let m = 1; m <= months; m++) {
-      if (outstanding <= 0.0001) break;
-
-      const monthIndex = schedule.length + 1;
+    for (let m = 1; m <= months && outstanding > 0.0001; m++) {
       const date = new Date(startDate);
-      date.setMonth(startDate.getMonth() + schedule.length);
+      date.setMonth(startDate.getMonth() + (m - 1));
 
-      // 1) Apply one-time prepayment if scheduled for this month
+      // One-time prepayment in matching month
       if (oneTimePrepayDateISO) {
         const otp = new Date(oneTimePrepayDateISO);
         if (otp.getFullYear() === date.getFullYear() && otp.getMonth() === date.getMonth()) {
-          outstanding = Math.max(0, outstanding - oneTimePrepay);
+          outstanding = Math.max(0, outstanding - Math.max(0, toNum(oneTimePrepay)));
         }
       }
 
-      // 2) Apply recurring prepayment (if month matches frequency and start)
-      if (recurringPrepay > 0 && monthIndex >= recurringStart && (monthIndex - recurringStart) % recurringInterval === 0) {
-        outstanding = Math.max(0, outstanding - recurringPrepay);
+      // Recurring prepayment
+      if (toNum(recurringPrepay) > 0 && m >= recurringStart && (m - recurringStart) % interval === 0) {
+        outstanding = Math.max(0, outstanding - Math.max(0, toNum(recurringPrepay)));
       }
 
-      // 3) Effective principal for interest calculation
+      // Effective principal for interest calculation (offset)
       const effectivePrincipal = savingsLink ? Math.max(0, outstanding - currSavings) : outstanding;
 
-      // 4) Interest payment for this month
+      // Interest for this month
       const interestPayment = effectivePrincipal * monthlyRate;
 
-      // 5) Principal portion of EMI (capped to outstanding)
+      // Principal portion of EMI
       let principalPayment = emi - interestPayment;
       if (principalPayment > outstanding) principalPayment = outstanding;
       if (principalPayment < 0) principalPayment = 0;
 
-      // 6) Total payment & update outstanding
       const payment = principalPayment + interestPayment;
       outstanding = Math.max(0, outstanding - principalPayment);
 
-      // 7) Save the current month schedule, including current savings
       schedule.push({
-        month: monthIndex,
+        month: m,
         date: date.toISOString().slice(0, 10),
         payment: Number(payment.toFixed(2)),
         principalPaid: Number(principalPayment.toFixed(2)),
@@ -122,11 +140,10 @@ export default function HomeLoanAnalyzer() {
         savingsLinked: Number(currSavings.toFixed(2)),
       });
 
-      // 8) Update savings for next month
-      currSavings = Math.max(0, currSavings + Number(savingsMonthlyDrift));
+      // Savings drift for next month
+      currSavings = Math.max(0, currSavings + Math.max(-1e12, toNum(savingsMonthlyDrift))); // guard huge negatives
     }
 
-    // Totals
     const totals = schedule.reduce(
       (acc, s) => {
         acc.totalInterest += s.interestPaid;
@@ -139,100 +156,116 @@ export default function HomeLoanAnalyzer() {
     return { schedule, totals, emi: Number(emi.toFixed(2)) };
   }
 
+  /** ---------- Scenarios (for chosen tenure) ---------- **/
 
-  const baseScenario = useMemo(() => {
-    return buildSchedule({
-      principal: loanAmount,
-      months: totalMonths,
-      annualRate,
-      emiStartISO: emiStartDate,
-    });
-  }, [loanAmount, totalMonths, annualRate, emiStartDate]);
+  const baseScenario = useMemo(
+    () =>
+      buildSchedule({
+        principal: loanAmount,
+        months: totalMonths,
+        annualRate,
+        emiStartISO: emiStartDate,
+      }),
+    [loanAmount, totalMonths, annualRate, emiStartDate]
+  );
 
-  const prepayScenario = useMemo(() => {
-    return buildSchedule({
-      principal: loanAmount,
-      months: totalMonths,
+  const prepayScenario = useMemo(
+    () =>
+      buildSchedule({
+        principal: loanAmount,
+        months: totalMonths,
+        annualRate,
+        emiStartISO: emiStartDate,
+        oneTimePrepay: toNum(oneTimePrepayAmt || whatIfOneTime),
+        oneTimePrepayDateISO: oneTimePrepayDate || null,
+        recurringPrepay: toNum(recurringPrepayAmt),
+        recurringFreq: recurringPrepayFreq,
+      }),
+    [
+      loanAmount,
+      totalMonths,
       annualRate,
-      emiStartISO: emiStartDate,
-      oneTimePrepay: oneTimePrepayAmt || whatIfOneTime,
-      oneTimePrepayDateISO: oneTimePrepayDate || null,
-      recurringPrepay: recurringPrepayAmt,
-      recurringFreq: recurringPrepayFreq,
-    });
-  }, [
-    loanAmount,
-    totalMonths,
-    annualRate,
-    emiStartDate,
-    oneTimePrepayAmt,
-    oneTimePrepayDate,
-    recurringPrepayAmt,
-    recurringPrepayFreq,
-    whatIfOneTime,
-  ]);
+      emiStartDate,
+      oneTimePrepayAmt,
+      oneTimePrepayDate,
+      recurringPrepayAmt,
+      recurringPrepayFreq,
+      whatIfOneTime,
+    ]
+  );
 
-  const savingsScenario = useMemo(() => {
-    return buildSchedule({
-      principal: loanAmount,
-      months: totalMonths,
-      annualRate,
-      emiStartISO: emiStartDate,
-      savingsLink: linkSavings,
-      savingsInit: whatIfSavings || savingsBalance,
-      savingsMonthlyDrift: savingsGrowthMonthly,
-    });
-  }, [
-    loanAmount,
-    totalMonths,
-    annualRate,
-    emiStartDate,
-    linkSavings,
-    savingsBalance,
-    whatIfSavings,
-    savingsGrowthMonthly,
-  ]);
+  const savingsScenario = useMemo(
+    () =>
+      buildSchedule({
+        principal: loanAmount,
+        months: totalMonths,
+        annualRate,
+        emiStartISO: emiStartDate,
+        savingsLink: linkSavings,
+        savingsInit: toNum(whatIfSavings || savingsBalance),
+        savingsMonthlyDrift: toNum(savingsGrowthMonthly),
+      }),
+    [
+        loanAmount,
+        totalMonths,
+        annualRate,
+        emiStartDate,
+        linkSavings,
+        savingsBalance,
+        whatIfSavings,
+        savingsGrowthMonthly,
+      ]
+  );
 
-  const prepaySavingsScenario = useMemo(() => {
-    return buildSchedule({
-      principal: loanAmount,
-      months: totalMonths,
+  const prepaySavingsScenario = useMemo(
+    () =>
+      buildSchedule({
+        principal: loanAmount,
+        months: totalMonths,
+        annualRate,
+        emiStartISO: emiStartDate,
+        oneTimePrepay: toNum(oneTimePrepayAmt || whatIfOneTime),
+        oneTimePrepayDateISO: oneTimePrepayDate || null,
+        recurringPrepay: toNum(recurringPrepayAmt),
+        recurringFreq: recurringPrepayFreq,
+        savingsLink: linkSavings,
+        savingsInit: toNum(whatIfSavings || savingsBalance),
+        savingsMonthlyDrift: toNum(savingsGrowthMonthly),
+      }),
+    [
+      loanAmount,
+      totalMonths,
       annualRate,
-      emiStartISO: emiStartDate,
-      oneTimePrepay: oneTimePrepayAmt || whatIfOneTime,
-      oneTimePrepayDateISO: oneTimePrepayDate || null,
-      recurringPrepay: recurringPrepayAmt,
-      recurringFreq: recurringPrepayFreq,
-      savingsLink: linkSavings,
-      savingsInit: whatIfSavings || savingsBalance,
-      savingsMonthlyDrift: savingsGrowthMonthly,
-    });
-  }, [
-    loanAmount,
-    totalMonths,
-    annualRate,
-    emiStartDate,
-    oneTimePrepayAmt,
-    whatIfOneTime,
-    oneTimePrepayDate,
-    recurringPrepayAmt,
-    recurringPrepayFreq,
-    linkSavings,
-    savingsBalance,
-    whatIfSavings,
-    savingsGrowthMonthly,
-  ]);
+      emiStartDate,
+      oneTimePrepayAmt,
+      whatIfOneTime,
+      oneTimePrepayDate,
+      recurringPrepayAmt,
+      recurringPrepayFreq,
+      linkSavings,
+      savingsBalance,
+      whatIfSavings,
+      savingsGrowthMonthly,
+    ]
+  );
+
+  /** ---------- Charts (for chosen tenure) ---------- **/
 
   const chartData = useMemo(() => {
-    const maxLen = Math.max(baseScenario.schedule.length, prepayScenario.schedule.length, savingsScenario.schedule.length, prepaySavingsScenario.schedule.length);
+    const maxLen = Math.max(
+      baseScenario.schedule.length,
+      prepayScenario.schedule.length,
+      savingsScenario.schedule.length,
+      prepaySavingsScenario.schedule.length
+    );
     const arr = [];
     for (let i = 0; i < maxLen; i++) {
       arr.push({
         month: i + 1,
-        baseBalance: baseScenario.schedule[i] ? baseScenario.schedule[i].balance : 0,
-        prepayBalance: prepayScenario.schedule[i] ? prepayScenario.schedule[i].balance : 0,
-        savingsBalance: savingsScenario.schedule[i] ? savingsScenario.schedule[i].balance : 0,
-        prepaySavingsBalance: prepaySavingsScenario.schedule[i] ? prepaySavingsScenario.schedule[i].balance : 0,
+        baseBalance: baseScenario.schedule[i]?.balance ?? 0,
+        prepayBalance: prepayScenario.schedule[i]?.balance ?? 0,
+        savingsBalance: savingsScenario.schedule[i]?.balance ?? 0,
+        prepaySavingsBalance: prepaySavingsScenario.schedule[i]?.balance ?? 0,
         baseInterestCumu: baseScenario.schedule.slice(0, i + 1).reduce((s, x) => s + x.interestPaid, 0),
         prepayInterestCumu: prepayScenario.schedule.slice(0, i + 1).reduce((s, x) => s + x.interestPaid, 0),
         savingsInterestCumu: savingsScenario.schedule.slice(0, i + 1).reduce((s, x) => s + x.interestPaid, 0),
@@ -242,7 +275,9 @@ export default function HomeLoanAnalyzer() {
     return arr;
   }, [baseScenario, prepayScenario, savingsScenario, prepaySavingsScenario]);
 
-  function generateRecommendations() {
+  /** ---------- Recommendations (for chosen tenure) ---------- **/
+
+  const recommendations = useMemo(() => {
     const baseInterest = baseScenario.totals.totalInterest;
     const baseMonths = baseScenario.schedule.length;
 
@@ -255,49 +290,137 @@ export default function HomeLoanAnalyzer() {
     const tableData = scenarios.map((s) => {
       const interestSaved = baseInterest - s.interest;
       const monthsSaved = baseMonths - s.months;
-      const percentSaved = ((interestSaved / baseInterest) * 100).toFixed(1);
-
-      return {
-        name: s.name,
-        interestSaved,
-        monthsSaved,
-        percentSaved,
-      };
+      const percentSaved = baseInterest > 0 ? ((interestSaved / baseInterest) * 100).toFixed(1) : "0.0";
+      return { name: s.name, interestSaved, monthsSaved, percentSaved };
     });
 
-    // Generate text insights
-    const insights = tableData.map((r) => {
-      if (r.interestSaved <= 0) return null;
-      let text = `${r.name}: Save ₹${formatINR(r.interestSaved)} (${r.percentSaved}% of interest)`;
-      if (r.monthsSaved > 0) text += `, reduce tenure by ${r.monthsSaved} month${r.monthsSaved > 1 ? "s" : ""}.`;
+    const insights = tableData
+      .map((r) => {
+        if (r.interestSaved <= 0) return null;
+        let text = `${r.name}: Save ₹${formatINR(r.interestSaved)} (${r.percentSaved}% interest)`;
+        if (r.monthsSaved > 0) text += `, cut tenure by ${r.monthsSaved} month${r.monthsSaved > 1 ? "s" : ""}.`;
+        if (r.name.includes("Savings")) {
+          const effReductionPct = ((r.interestSaved / Math.max(1, loanAmount)) * annualRate).toFixed(2);
+          text += ` Effective rate reduction ~ ${effReductionPct}%.`;
+        }
+        if (toNum(oneTimePrepayAmt || whatIfOneTime) > 0) {
+          text += ` One-time prepay of ₹${formatINR(toNum(oneTimePrepayAmt || whatIfOneTime))} helps early.`;
+        }
+        if (toNum(recurringPrepayAmt) > 0) {
+          text += ` Recurring prepay ₹${formatINR(toNum(recurringPrepayAmt))} ${recurringPrepayFreq} trims tenure.`;
+        }
+        return text;
+      })
+      .filter(Boolean);
 
-      // Additional suggestions
-      if (r.name.includes("Savings")) {
-        text += ` Effective interest rate reduction ≈ ${(annualRate - ((r.interestSaved / loanAmount) * annualRate)).toFixed(2)}%.`;
-      }
-      if (oneTimePrepayAmt || whatIfOneTime) {
-        text += ` One-time prepayment of ₹${formatINR(oneTimePrepayAmt || whatIfOneTime)} saves interest early in loan term.`;
-      }
-      if (recurringPrepayAmt) {
-        text += ` Recurring prepayment of ₹${formatINR(recurringPrepayAmt)} ${recurringPrepayFreq} reduces tenure.`;
-      }
-
-      return text;
-    }).filter(Boolean);
-
-    // Identify best scenario (max interest saved)
     const best = tableData.reduce((prev, curr) => (curr.interestSaved > (prev.interestSaved || 0) ? curr : prev), {});
-    if (best.name) insights.push(`🏆 Best option: ${best.name} for maximum savings!`);
-
+    if (best.name) insights.push(`🏆 Best option: ${best.name} for maximum savings.`);
     return { tableData, insights };
-  }
-
-
-
-  const recommendations = useMemo(generateRecommendations, [baseScenario, prepayScenario, savingsScenario, prepaySavingsScenario, linkSavings, savingsBalance, whatIfSavings, oneTimePrepayAmt, whatIfOneTime, recurringPrepayAmt]);
+  }, [
+    baseScenario,
+    prepayScenario,
+    savingsScenario,
+    prepaySavingsScenario,
+    loanAmount,
+    annualRate,
+    oneTimePrepayAmt,
+    whatIfOneTime,
+    recurringPrepayAmt,
+    recurringPrepayFreq,
+  ]);
 
   const { tableData, insights } = recommendations;
-  // Export CSV helper
+
+  /** ---------- Tenure Comparison (NEW) ---------- **/
+
+  // Years to compare side-by-side (kept small & explicit for clarity)
+  const TENURE_SET = [18, 20, 22, 25, 30];
+
+  /**
+   * For each tenure, compute the same four scenarios using the SAME inputs
+   * (rate, prepay settings, savings offset options), but with months derived
+   * from the tenure in the set above. This answers: “what if I picked a different tenure?”
+   */
+  const tenureComparison = useMemo(() => {
+    return TENURE_SET.map((years) => {
+      const months = years * 12 + 0;
+      const base = buildSchedule({
+        principal: loanAmount,
+        months,
+        annualRate,
+        emiStartISO: emiStartDate,
+      });
+      const prepay = buildSchedule({
+        principal: loanAmount,
+        months,
+        annualRate,
+        emiStartISO: emiStartDate,
+        oneTimePrepay: toNum(oneTimePrepayAmt || whatIfOneTime),
+        oneTimePrepayDateISO: oneTimePrepayDate || null,
+        recurringPrepay: toNum(recurringPrepayAmt),
+        recurringFreq: recurringPrepayFreq,
+      });
+      const savings = buildSchedule({
+        principal: loanAmount,
+        months,
+        annualRate,
+        emiStartISO: emiStartDate,
+        savingsLink: linkSavings,
+        savingsInit: toNum(whatIfSavings || savingsBalance),
+        savingsMonthlyDrift: toNum(savingsGrowthMonthly),
+      });
+      const prepaySavings = buildSchedule({
+        principal: loanAmount,
+        months,
+        annualRate,
+        emiStartISO: emiStartDate,
+        oneTimePrepay: toNum(oneTimePrepayAmt || whatIfOneTime),
+        oneTimePrepayDateISO: oneTimePrepayDate || null,
+        recurringPrepay: toNum(recurringPrepayAmt),
+        recurringFreq: recurringPrepayFreq,
+        savingsLink: linkSavings,
+        savingsInit: toNum(whatIfSavings || savingsBalance),
+        savingsMonthlyDrift: toNum(savingsGrowthMonthly),
+      });
+
+      return {
+        years,
+        months,
+        items: [
+          { key: "Base", emi: base.emi, payoff: base.schedule.length, totalInterest: base.totals.totalInterest, totalCost: loanAmount + base.totals.totalInterest },
+          { key: "Prepay", emi: prepay.emi, payoff: prepay.schedule.length, totalInterest: prepay.totals.totalInterest, totalCost: loanAmount + prepay.totals.totalInterest },
+          { key: "Savings Linked", emi: savings.emi, payoff: savings.schedule.length, totalInterest: savings.totals.totalInterest, totalCost: loanAmount + savings.totals.totalInterest },
+          { key: "Prepay + Savings", emi: prepaySavings.emi, payoff: prepaySavings.schedule.length, totalInterest: prepaySavings.totals.totalInterest, totalCost: loanAmount + prepaySavings.totals.totalInterest },
+        ],
+      };
+    });
+  }, [
+    loanAmount,
+    annualRate,
+    emiStartDate,
+    oneTimePrepayAmt,
+    whatIfOneTime,
+    oneTimePrepayDate,
+    recurringPrepayAmt,
+    recurringPrepayFreq,
+    linkSavings,
+    savingsBalance,
+    whatIfSavings,
+    savingsGrowthMonthly,
+  ]);
+
+  // Build a simple chart dataset per tenure using Base total interest (you can switch to any scenario)
+  const tenureInterestChartData = useMemo(() => {
+    return tenureComparison.map((row) => {
+      const baseRow = row.items.find((x) => x.key === "Base");
+      return {
+        tenure: `${row.years}y`,
+        totalInterestBase: baseRow ? Number(baseRow.totalInterest.toFixed(2)) : 0,
+      };
+    });
+  }, [tenureComparison]);
+
+  /** ---------- CSV Export ---------- **/
   function exportCSV(schedule, filename = "amortization.csv") {
     const header = ["Month", "Date", "Payment", "PrincipalPaid", "InterestPaid", "Balance", "SavingsLinked"];
     const rows = schedule.map((r) => [r.month, r.date, r.payment, r.principalPaid, r.interestPaid, r.balance, r.savingsLinked]);
@@ -325,8 +448,7 @@ export default function HomeLoanAnalyzer() {
     }
   }, [selectedScenario, baseScenario, prepayScenario, savingsScenario, prepaySavingsScenario]);
 
-
-  // Minimal CSS included as a string so the single-file component has styling without Tailwind dependency
+  /** ---------- Styles ---------- **/
   const styles = `
   :root{
     --bg:#f6f8fb;
@@ -339,11 +461,11 @@ export default function HomeLoanAnalyzer() {
     --shadow: 0 6px 18px rgba(18,38,63,0.06);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   }
-  .hla-container{padding:20px;max-width:1150px;margin:0 auto;background:var(--bg)}
+  .hla-container{padding:20px;max-width:1200px;margin:0 auto;background:var(--bg)}
   .hla-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-  @media(max-width:900px){.hla-grid{grid-template-columns:1fr}}
+  @media(max-width:1000px){.hla-grid{grid-template-columns:1fr}}
   .hla-card{background:var(--card);padding:18px;border-radius:var(--radius);box-shadow:var(--shadow);}
-  .hla-title{font-size:20px;font-weight:600;margin-bottom:8px}
+  .hla-title{font-size:22px;font-weight:700;margin-bottom:12px}
   label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
   input[type="number"],input[type="date"],select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6eef6;background:#fff;font-size:14px}
   .small{font-size:13px;color:var(--muted)}
@@ -361,36 +483,61 @@ export default function HomeLoanAnalyzer() {
   ul.recs{margin:0;padding-left:18px}
   .note{font-size:12px;color:var(--muted);margin-top:10px}
 
-  /* slider style */
-  input[type=range]{width:100%}
+  .tenure-grid{display:grid;grid-template-columns:repeat(1,1fr);gap:10px}
+  @media(max-width:1100px){.tenure-grid{grid-template-columns:repeat(2,1fr)}}
+  .tenure-card{background:#f8fafc;border:1px solid #eef4fb;border-radius:12px;padding:12px}
+  .tenure-title{font-weight:600;margin-bottom:6px}
   `;
 
-
+  /** ---------- Render ---------- **/
   return (
     <div className="hla-container">
       <style dangerouslySetInnerHTML={{ __html: styles }} />
       <h1 className="hla-title">Home Loan Analyzer</h1>
 
-      {/* Inputs Card */}
+      {/* Inputs */}
       <div className="hla-grid">
+        {/* Loan Inputs */}
         <div className="hla-card">
           <h2 className="small">Loan Inputs</h2>
+
           <label>Loan Amount (₹)</label>
-          <input type="number" value={loanAmount} onChange={(e) => setLoanAmount(Number(e.target.value))} />
+          <input
+            type="number"
+            inputMode="numeric"
+            value={loanAmount}
+            onChange={(e) => setLoanAmount(Math.max(0, toNum(e.target.value)))}
+          />
 
           <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
             <div style={{ flex: 1 }}>
               <label>Tenure (yrs)</label>
-              <input type="number" value={tenureYears} onChange={(e) => setTenureYears(Number(e.target.value))} />
+              <input
+                type="number"
+                inputMode="numeric"
+                value={tenureYears}
+                onChange={(e) => setTenureYears(Math.max(0, toNum(e.target.value)))}
+              />
             </div>
             <div style={{ width: 120 }}>
               <label>+ months</label>
-              <input type="number" value={tenureMonths} onChange={(e) => setTenureMonths(Number(e.target.value))} />
+              <input
+                type="number"
+                inputMode="numeric"
+                value={tenureMonths}
+                onChange={(e) => setTenureMonths(Math.max(0, toNum(e.target.value)))}
+              />
             </div>
           </div>
 
           <label>Annual Interest Rate (%)</label>
-          <input type="number" step="0.01" value={annualRate} onChange={(e) => setAnnualRate(Number(e.target.value))} />
+          <input
+            type="number"
+            step="0.01"
+            inputMode="decimal"
+            value={annualRate}
+            onChange={(e) => setAnnualRate(Math.max(0, toNum(e.target.value)))}
+          />
 
           <label>EMI Start Date</label>
           <input type="date" value={emiStartDate} onChange={(e) => setEmiStartDate(e.target.value)} />
@@ -399,13 +546,23 @@ export default function HomeLoanAnalyzer() {
 
           <h3 className="small">Prepayment Options</h3>
           <label>One-time Prepayment (₹)</label>
-          <input type="number" value={oneTimePrepayAmt} onChange={(e) => setOneTimePrepayAmt(Number(e.target.value))} />
+          <input
+            type="number"
+            inputMode="numeric"
+            value={oneTimePrepayAmt}
+            onChange={(e) => setOneTimePrepayAmt(Math.max(0, toNum(e.target.value)))}
+          />
           <label>Date for one-time prepayment</label>
           <input type="date" value={oneTimePrepayDate} onChange={(e) => setOneTimePrepayDate(e.target.value)} />
 
           <label>Recurring prepayment (₹)</label>
           <div style={{ display: "flex", gap: 8 }}>
-            <input type="number" value={recurringPrepayAmt} onChange={(e) => setRecurringPrepayAmt(Number(e.target.value))} />
+            <input
+              type="number"
+              inputMode="numeric"
+              value={recurringPrepayAmt}
+              onChange={(e) => setRecurringPrepayAmt(Math.max(0, toNum(e.target.value)))}
+            />
             <select value={recurringPrepayFreq} onChange={(e) => setRecurringPrepayFreq(e.target.value)}>
               <option value="monthly">Monthly</option>
               <option value="quarterly">Quarterly</option>
@@ -422,24 +579,44 @@ export default function HomeLoanAnalyzer() {
           </label>
 
           <label>Current savings balance (₹)</label>
-          <input type="number" value={savingsBalance} onChange={(e) => setSavingsBalance(Number(e.target.value))} />
+          <input
+            type="number"
+            inputMode="numeric"
+            value={savingsBalance}
+            onChange={(e) => setSavingsBalance(Math.max(0, toNum(e.target.value)))}
+          />
 
           <label>Monthly growth/decline in savings (₹)</label>
-          <input type="number" value={savingsGrowthMonthly} onChange={(e) => setSavingsGrowthMonthly(Number(e.target.value))} />
+          <input
+            type="number"
+            inputMode="numeric"
+            value={savingsGrowthMonthly}
+            onChange={(e) => setSavingsGrowthMonthly(toNum(e.target.value))}
+          />
 
           <hr style={{ margin: "14px 0" }} />
 
           <h3 className="small">What-if quick sliders</h3>
           <label className="small">Test savings to link: ₹{formatINR(whatIfSavings)}</label>
-          <input type="number" value={whatIfSavings} onChange={(e) => setWhatIfSavings(Number(e.target.value))} />
+          <input
+            type="number"
+            inputMode="numeric"
+            value={whatIfSavings}
+            onChange={(e) => setWhatIfSavings(Math.max(0, toNum(e.target.value)))}
+          />
 
           <label className="small">Test one-time prepayment: ₹{formatINR(whatIfOneTime)}</label>
-          <input type="number" value={whatIfOneTime} onChange={(e) => setWhatIfOneTime(Number(e.target.value))} />
+          <input
+            type="number"
+            inputMode="numeric"
+            value={whatIfOneTime}
+            onChange={(e) => setWhatIfOneTime(Math.max(0, toNum(e.target.value)))}
+          />
         </div>
 
         {/* Summary cards */}
         <div className="hla-card">
-          <h2 className="small">Summary</h2>
+          <h2 className="small">Summary (Current Tenure)</h2>
           <div className="summary-grid">
             <div className="summary-card">
               <div className="small">EMI (Base)</div>
@@ -454,22 +631,30 @@ export default function HomeLoanAnalyzer() {
               <div className="big-num">{baseScenario.schedule.length}</div>
             </div>
             <div className="summary-card">
-              <div className="small">Total Cost (Principal + Interest)</div>
+              <div className="small">Total Cost (P + I)</div>
               <div className="big-num">₹{formatINR(loanAmount + baseScenario.totals.totalInterest)}</div>
             </div>
           </div>
 
           <div style={{ marginTop: 12 }}>
-            <button className="btn" onClick={() => exportCSV(baseScenario.schedule, "base_amortization.csv")}>Export Base CSV</button>
-            <button className="btn green" style={{ marginLeft: 8 }} onClick={() => exportCSV(prepayScenario.schedule, "prepay_amortization.csv")}>Export Prepay CSV</button>
+            <button className="btn" onClick={() => exportCSV(baseScenario.schedule, "base_amortization.csv")}>
+              Export Base CSV
+            </button>
+            <button
+              className="btn green"
+              style={{ marginLeft: 8 }}
+              onClick={() => exportCSV(prepayScenario.schedule, "prepay_amortization.csv")}
+            >
+              Export Prepay CSV
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Charts and schedule tabs */}
+      {/* Charts for selected tenure */}
       <div className="charts-grid">
         <div className="hla-card">
-          <h3 className="small">Remaining Balance Comparison</h3>
+          <h3 className="small">Remaining Balance — Scenario Comparison</h3>
           <div style={{ width: "100%", height: 300 }}>
             <ResponsiveContainer>
               <LineChart data={chartData}>
@@ -488,7 +673,7 @@ export default function HomeLoanAnalyzer() {
         </div>
 
         <div className="hla-card">
-          <h3 className="small">Cumulative Interest Comparison</h3>
+          <h3 className="small">Cumulative Interest — Scenario Comparison</h3>
           <div style={{ width: "100%", height: 300 }}>
             <ResponsiveContainer>
               <LineChart data={chartData}>
@@ -506,139 +691,213 @@ export default function HomeLoanAnalyzer() {
           </div>
         </div>
 
-  
-      <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
-        <h3 className="small">Amortization Schedule (Base)</h3>
-        <div style={{ display: 'flex'}}>
-          <label>
-            <input type="radio" name="scenario" value="base"
-              checked={selectedScenario === "base"}
-              onChange={(e) => setSelectedScenario(e.target.value)} /> Base
-          </label>
-          <label style={{ marginLeft: 12 }}>
-            <input type="radio" name="scenario" value="prepay"
-              checked={selectedScenario === "prepay"}
-              onChange={(e) => setSelectedScenario(e.target.value)} /> Prepay
-          </label>
-          <label style={{ marginLeft: 12 }}>
-            <input type="radio" name="scenario" value="savings"
-              checked={selectedScenario === "savings"}
-              onChange={(e) => setSelectedScenario(e.target.value)} /> Savings Linked
-          </label>
-          <label style={{ marginLeft: 12 }}>
-            <input type="radio" name="scenario" value="prepaySavings"
-              checked={selectedScenario === "prepaySavings"}
-              onChange={(e) => setSelectedScenario(e.target.value)} /> Prepay + Savings
-          </label>
+        {/* Amortization Schedule */}
+        <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
+          <h3 className="small">Amortization Schedule</h3>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <label>
+              <input
+                type="radio"
+                name="scenario"
+                value="base"
+                checked={selectedScenario === "base"}
+                onChange={(e) => setSelectedScenario(e.target.value)}
+              />{" "}
+              Base
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="scenario"
+                value="prepay"
+                checked={selectedScenario === "prepay"}
+                onChange={(e) => setSelectedScenario(e.target.value)}
+              />{" "}
+              Prepay
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="scenario"
+                value="savings"
+                checked={selectedScenario === "savings"}
+                onChange={(e) => setSelectedScenario(e.target.value)}
+              />{" "}
+              Savings Linked
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="scenario"
+                value="prepaySavings"
+                checked={selectedScenario === "prepaySavings"}
+                onChange={(e) => setSelectedScenario(e.target.value)}
+              />{" "}
+              Prepay + Savings
+            </label>
+          </div>
+
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th>Date</th>
+                  <th>Payment</th>
+                  <th>Principal</th>
+                  <th>Interest</th>
+                  <th>Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentSchedule.slice(0, 500).map((r) => (
+                  <tr key={r.month}>
+                    <td>{r.month}</td>
+                    <td>{r.date}</td>
+                    <td>₹{formatINR(r.payment)}</td>
+                    <td>₹{formatINR(r.principalPaid)}</td>
+                    <td>₹{formatINR(r.interestPaid)}</td>
+                    <td>₹{formatINR(r.balance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div className="table-wrapper">
+
+        {/* Scenario Comparison (Current Tenure) */}
+        <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
+          <h3 className="small">Scenario Comparison (Current Tenure)</h3>
           <table>
             <thead>
               <tr>
-                <th>Month</th>
-                <th>Date</th>
-                <th>Payment</th>
-                <th>Principal</th>
-                <th>Interest</th>
-                <th>Balance</th>
+                <th>Scenario</th>
+                <th>EMI</th>
+                <th>Payoff Months</th>
+                <th>Total Interest</th>
+                <th>Total Cost</th>
               </tr>
             </thead>
             <tbody>
-              {currentSchedule.slice(0, 500).map((r) => (
-                <tr key={r.month}>
-                  <td>{r.month}</td>
-                  <td>{r.date}</td>
-                  <td>₹{formatINR(r.payment)}</td>
-                  <td>₹{formatINR(r.principalPaid)}</td>
-                  <td>₹{formatINR(r.interestPaid)}</td>
-                  <td>₹{formatINR(r.balance)}</td>
+              <tr>
+                <td>Base</td>
+                <td>₹{formatINR(baseScenario.emi)}</td>
+                <td>{baseScenario.schedule.length}</td>
+                <td>₹{formatINR(baseScenario.totals.totalInterest)}</td>
+                <td>₹{formatINR(loanAmount + baseScenario.totals.totalInterest)}</td>
+              </tr>
+              <tr>
+                <td>Prepay</td>
+                <td>₹{formatINR(prepayScenario.emi)}</td>
+                <td>{prepayScenario.schedule.length}</td>
+                <td>₹{formatINR(prepayScenario.totals.totalInterest)}</td>
+                <td>₹{formatINR(loanAmount + prepayScenario.totals.totalInterest)}</td>
+              </tr>
+              <tr>
+                <td>Savings Linked</td>
+                <td>₹{formatINR(savingsScenario.emi)}</td>
+                <td>{savingsScenario.schedule.length}</td>
+                <td>₹{formatINR(savingsScenario.totals.totalInterest)}</td>
+                <td>₹{formatINR(loanAmount + savingsScenario.totals.totalInterest)}</td>
+              </tr>
+              <tr>
+                <td>Prepay + Savings</td>
+                <td>₹{formatINR(prepaySavingsScenario.emi)}</td>
+                <td>{prepaySavingsScenario.schedule.length}</td>
+                <td>₹{formatINR(prepaySavingsScenario.totals.totalInterest)}</td>
+                <td>₹{formatINR(loanAmount + prepaySavingsScenario.totals.totalInterest)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Auto Recommendations */}
+        <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
+          <h3 className="small">Auto Recommendations</h3>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Interest Saved</th>
+                <th>% Saved</th>
+                <th>Tenure Reduced</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableData.map((r, i) => (
+                <tr key={i} style={{ fontWeight: r.interestSaved > 0 ? "600" : "normal" }}>
+                  <td>{r.name}</td>
+                  <td>{r.interestSaved > 0 ? `₹${formatINR(r.interestSaved)}` : "-"}</td>
+                  <td>{r.interestSaved > 0 ? `${r.percentSaved}%` : "-"}</td>
+                  <td>{r.monthsSaved > 0 ? `${r.monthsSaved} month${r.monthsSaved > 1 ? "s" : ""}` : "-"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+
+          <ul className="recs" style={{ marginTop: 12 }}>
+            {insights.map((ins, i) => (
+              <li key={i}>{ins}</li>
+            ))}
+          </ul>
+        </div>
+
+        {/* ---------- NEW: Tenure Comparison Section ---------- */}
+        <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
+          <h3 className="small">Tenure Comparison — 18y, 20y, 22y, 25y, 30y (Same Inputs)</h3>
+
+          {/* Quick visual: Base total interest across tenures */}
+          <div style={{ width: "100%", height: 260, marginBottom: 12 }}>
+            <ResponsiveContainer>
+              <BarChart data={tenureInterestChartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="tenure" />
+                <YAxis />
+                <Tooltip formatter={(v) => `₹${formatINR(v)}`} />
+                <Legend />
+                <Bar dataKey="totalInterestBase" name="Total Interest (Base)" fill="#8884d8" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Cards per tenure */}
+          <div className="tenure-grid" style={{ marginTop: 10 }}>
+            {tenureComparison.map((row) => (
+              <div key={row.years} className="tenure-card">
+                <div className="tenure-title">{row.years} years ({row.months} months)</div>
+                <table style={{ width: "100%", fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th>Scenario</th>
+                      <th>EMI</th>
+                      <th>Payoff (m)</th>
+                      <th>Interest</th>
+                      <th>Total Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {row.items.map((it) => (
+                      <tr key={it.key}>
+                        <td>{it.key}</td>
+                        <td>₹{formatINR(it.emi)}</td>
+                        <td>{it.payoff}</td>
+                        <td>₹{formatINR(it.totalInterest)}</td>
+                        <td>₹{formatINR(it.totalCost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Scenario Comparison */}
-      <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
-        <h3 className="small">Scenario Comparison (Quick)</h3>
-        <table>
-          <thead>
-            <tr>
-              <th>Scenario</th>
-              <th>EMI</th>
-              <th>Payoff Months</th>
-              <th>Total Interest</th>
-              <th>Total Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Base</td>
-              <td>₹{formatINR(baseScenario.emi)}</td>
-              <td>{baseScenario.schedule.length}</td>
-              <td>₹{formatINR(baseScenario.totals.totalInterest)}</td>
-              <td>₹{formatINR(loanAmount + baseScenario.totals.totalInterest)}</td>
-            </tr>
-            <tr>
-              <td>Prepay</td>
-              <td>₹{formatINR(prepayScenario.emi)}</td>
-              <td>{prepayScenario.schedule.length}</td>
-              <td>₹{formatINR(prepayScenario.totals.totalInterest)}</td>
-              <td>₹{formatINR(loanAmount + prepayScenario.totals.totalInterest)}</td>
-            </tr>
-            <tr>
-              <td>Savings Linked</td>
-              <td>₹{formatINR(savingsScenario.emi)}</td>
-              <td>{savingsScenario.schedule.length}</td>
-              <td>₹{formatINR(savingsScenario.totals.totalInterest)}</td>
-              <td>₹{formatINR(loanAmount + savingsScenario.totals.totalInterest)}</td>
-            </tr>
-            <tr>
-              <td>Prepay + Savings</td>
-              <td>₹{formatINR(prepaySavingsScenario.emi)}</td>
-              <td>{prepaySavingsScenario.schedule.length}</td>
-              <td>₹{formatINR(prepaySavingsScenario.totals.totalInterest)}</td>
-              <td>₹{formatINR(loanAmount + prepaySavingsScenario.totals.totalInterest)}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div className="note">
+        Note: This calculator models a savings “offset” by reducing the interest-bearing principal by the savings
+        balance each month. Bank-specific sweep/offset behaviour (daily averaging, min balances, taxes) may differ.
       </div>
-      <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
-        <h3 className="small">Auto Recommendations</h3>
-
-        {/* Table */}
-        <table>
-          <thead>
-            <tr>
-              <th>Scenario</th>
-              <th>Interest Saved</th>
-              <th>% Saved</th>
-              <th>Tenure Reduced</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tableData.map((r, i) => (
-              <tr key={i} style={{ fontWeight: r.interestSaved > 0 ? "600" : "normal" }}>
-                <td>{r.name}</td>
-                <td>{r.interestSaved > 0 ? `₹${formatINR(r.interestSaved)}` : "-"}</td>
-                <td>{r.interestSaved > 0 ? `${r.percentSaved}%` : "-"}</td>
-                <td>{r.monthsSaved > 0 ? `${r.monthsSaved} month${r.monthsSaved > 1 ? "s" : ""}` : "-"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* Text Insights */}
-        <ul className="recs" style={{ marginTop: 12 }}>
-          {insights.map((ins, i) => (
-            <li key={i}>{ins}</li>
-          ))}
-        </ul>
-      </div>
-      </div>
-
-      <div className="note">Note: This calculator models a savings "offset" simply by reducing the interest-bearing principal by the savings balance each month. For bank-specific sweep/offset behaviour (e.g. daily averaging, min-balance rules, tax/legal considerations), consult your lender.</div>
     </div>
   );
 }
