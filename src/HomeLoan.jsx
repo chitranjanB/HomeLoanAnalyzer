@@ -343,7 +343,7 @@ export default function HomeLoanAnalyzer() {
    */
   const tenureComparison = useMemo(() => {
     return TENURE_SET.map((years) => {
-      const months = years * 12 + 0;
+      const months = years * 12;
       const base = buildSchedule({
         principal: loanAmount,
         months,
@@ -384,14 +384,13 @@ export default function HomeLoanAnalyzer() {
       });
 
       return {
-        years,
-        months,
-        items: [
-          { key: "Base", emi: base.emi, payoff: base.schedule.length, totalInterest: base.totals.totalInterest, totalCost: loanAmount + base.totals.totalInterest },
-          { key: "Prepay", emi: prepay.emi, payoff: prepay.schedule.length, totalInterest: prepay.totals.totalInterest, totalCost: loanAmount + prepay.totals.totalInterest },
-          { key: "Savings Linked", emi: savings.emi, payoff: savings.schedule.length, totalInterest: savings.totals.totalInterest, totalCost: loanAmount + savings.totals.totalInterest },
-          { key: "Prepay + Savings", emi: prepaySavings.emi, payoff: prepaySavings.schedule.length, totalInterest: prepaySavings.totals.totalInterest, totalCost: loanAmount + prepaySavings.totals.totalInterest },
-        ],
+        tenure: `${years}y`,
+        scenarios: {
+          Base: base,
+          Prepay: prepay,
+          "Savings Linked": savings,
+          "Prepay + Savings": prepaySavings,
+        },
       };
     });
   }, [
@@ -410,15 +409,33 @@ export default function HomeLoanAnalyzer() {
   ]);
 
   // Build a simple chart dataset per tenure using Base total interest (you can switch to any scenario)
-  const tenureInterestChartData = useMemo(() => {
+  const tenureChartData = useMemo(() => {
     return tenureComparison.map((row) => {
-      const baseRow = row.items.find((x) => x.key === "Base");
       return {
-        tenure: `${row.years}y`,
-        totalInterestBase: baseRow ? Number(baseRow.totalInterest.toFixed(2)) : 0,
+        tenure: row.tenure,
+        totalInterestBase: row.scenarios.Base.totals.totalInterest,
+        details: row.scenarios,
       };
     });
   }, [tenureComparison]);
+
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      const details = payload[0].payload.details;
+      return (
+        <div style={{ background: "#fff", border: "1px solid #ccc", padding: 10, fontSize: 12 }}>
+          <div><b>Tenure: {label}</b></div>
+          {Object.entries(details).map(([name, scen]) => (
+            <div key={name} style={{ marginTop: 4 }}>
+              <b>{name}</b>: Interest ₹{formatINR(scen.totals.totalInterest)}, EMI ₹{formatINR(scen.emi)}, Payoff {scen.schedule.length}m
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
+
 
   /** ---------- CSV Export ---------- **/
   function exportCSV(schedule, filename = "amortization.csv") {
@@ -592,25 +609,6 @@ export default function HomeLoanAnalyzer() {
             inputMode="numeric"
             value={savingsGrowthMonthly}
             onChange={(e) => setSavingsGrowthMonthly(toNum(e.target.value))}
-          />
-
-          <hr style={{ margin: "14px 0" }} />
-
-          <h3 className="small">What-if quick sliders</h3>
-          <label className="small">Test savings to link: ₹{formatINR(whatIfSavings)}</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={whatIfSavings}
-            onChange={(e) => setWhatIfSavings(Math.max(0, toNum(e.target.value)))}
-          />
-
-          <label className="small">Test one-time prepayment: ₹{formatINR(whatIfOneTime)}</label>
-          <input
-            type="number"
-            inputMode="numeric"
-            value={whatIfOneTime}
-            onChange={(e) => setWhatIfOneTime(Math.max(0, toNum(e.target.value)))}
           />
         </div>
 
@@ -845,53 +843,20 @@ export default function HomeLoanAnalyzer() {
 
         {/* ---------- NEW: Tenure Comparison Section ---------- */}
         <div className="hla-card" style={{ gridColumn: "1 / -1" }}>
-          <h3 className="small">Tenure Comparison — 18y, 20y, 22y, 25y, 30y (Same Inputs)</h3>
-
-          {/* Quick visual: Base total interest across tenures */}
-          <div style={{ width: "100%", height: 260, marginBottom: 12 }}>
-            <ResponsiveContainer>
-              <BarChart data={tenureInterestChartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="tenure" />
-                <YAxis />
-                <Tooltip formatter={(v) => `₹${formatINR(v)}`} />
-                <Legend />
-                <Bar dataKey="totalInterestBase" name="Total Interest (Base)" fill="#8884d8" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Cards per tenure */}
-          <div className="tenure-grid" style={{ marginTop: 10 }}>
-            {tenureComparison.map((row) => (
-              <div key={row.years} className="tenure-card">
-                <div className="tenure-title">{row.years} years ({row.months} months)</div>
-                <table style={{ width: "100%", fontSize: 12 }}>
-                  <thead>
-                    <tr>
-                      <th>Scenario</th>
-                      <th>EMI</th>
-                      <th>Payoff (m)</th>
-                      <th>Interest</th>
-                      <th>Total Cost</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {row.items.map((it) => (
-                      <tr key={it.key}>
-                        <td>{it.key}</td>
-                        <td>₹{formatINR(it.emi)}</td>
-                        <td>{it.payoff}</td>
-                        <td>₹{formatINR(it.totalInterest)}</td>
-                        <td>₹{formatINR(it.totalCost)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-          </div>
+        <h3 className="small">Tenure Comparison — Tooltip shows all scenarios</h3>
+        <div style={{ width: "100%", height: 300 }}>
+          <ResponsiveContainer>
+            <BarChart data={tenureChartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="tenure" />
+              <YAxis />
+              <Tooltip content={<CustomTooltip />} />
+              <Legend />
+              <Bar dataKey="totalInterestBase" name="Total Interest (Base)" fill="#8884d8" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
+      </div>
       </div>
 
       <div className="note">
